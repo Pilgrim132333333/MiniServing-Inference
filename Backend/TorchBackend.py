@@ -1,21 +1,23 @@
 from Backend.model.model_register import model_register
+from Backend.Basebackend import BaseBackend
+from Engine.Request import Request
 
 
-class Backend():
+class TorchBackend(BaseBackend):
     def __init__(self,model_name:str):
-        self.model_name = model_name
-        self.model = None
-    def generate(self,request):
+        super().__init__(model_name)
+    def generate(self,request:Request) -> list: # 返回token list
         #传递给model
         if not self.model:
             self.load_model()
         input_token = self.get_request_input_token(request)
-        output_token = self.model.default_generate(input_token)
+        output_token = self.model.generate(request)
         #这里要包装output
         request.set_out_put_token(output_token)
         return output_token
 
         return output
+
     def load_model(self):
         model_name = self.model_name
         self.model = model_register[model_name]()

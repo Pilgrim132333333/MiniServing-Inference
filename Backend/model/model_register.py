@@ -1,8 +1,7 @@
 import torch
 from transformers import AutoModelForCausalLM
 from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from Engine.EngineCore import Request
+from Engine.Request import Request
 model_register = {}
 
 def register_model(model_name:str):
@@ -45,7 +44,7 @@ class GPT2:
         input_ids = torch.tensor([input_token])
         output = self.model.generate(input_ids)
         return output
-    def generate(self,request:"Request") :
+    def generate(self,request:Request) :
         input_tokens = request.get_input_token()
         input_tensors = torch.tensor([input_tokens])
         
@@ -71,6 +70,8 @@ class GPT2:
                 generate_token.append(next_token_id)
                 next_token = torch.tensor([[next_token_id]])
                 count += 1
+                if count % 5 == 0:
+                    print(f"  decode step {count}/{self.max_token}, current token_id={next_token_id}")
         
         #将[token_id]转换为[tensor,token_id]
         output = torch.tensor(generate_token)
