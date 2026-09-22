@@ -29,7 +29,7 @@ class DeepSeekV41Flash:
 class GPT2:
     def __init__(self):
         self.load_model()
-        self.max_token = 1000
+        self.max_token = 20
         
 
     
@@ -44,9 +44,9 @@ class GPT2:
         input_ids = torch.tensor([input_token])
         output = self.model.generate(input_ids)
         return output
-    def generate(self,request:Request) :
-        input_tokens = request.get_input_token()
-        input_tensors = torch.tensor([input_tokens])
+
+    def generate(self,input_token:list) :
+        input_tensors = torch.tensor([input_token])
         
         with torch.no_grad():
         #prefill 
