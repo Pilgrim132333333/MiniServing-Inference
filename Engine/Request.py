@@ -1,3 +1,9 @@
+from enum import Enum
+class RequestStatus(Enum):
+    WAITING = 0
+    RUNNING = 1
+    FINISHED = 2
+    FAILED = 3
 class Request:
     def __init__(self,request_id:int,prompt:str,tokenIDs:list,sampling_params:dict = None):
         self.request_id = request_id
@@ -5,6 +11,7 @@ class Request:
         self.tokenIDs = tokenIDs
         self.output_tokenIDs= None
         self.sampling_params = sampling_params
+        self.status = RequestStatus.WAITING
     
     def get_input_token(self):
         return self.tokenIDs
@@ -21,3 +28,8 @@ class Request:
         return
     def get_output_prompt(self):
         return self.output_promptIDs
+    def get_status(self):
+        return self.status
+    def set_status(self,status:RequestStatus):
+        self.status = status
+        return

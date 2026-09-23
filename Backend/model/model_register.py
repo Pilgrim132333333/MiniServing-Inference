@@ -31,8 +31,6 @@ class GPT2:
         self.load_model()
         self.max_token = 20
         
-
-    
     def load_model(self):
         model = AutoModelForCausalLM.from_pretrained("gpt2")
         self.model = model

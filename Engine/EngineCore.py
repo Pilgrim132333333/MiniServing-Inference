@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer
 from Engine.Request import Request
 from Backend.BackendFactory import BackendFactory
+from Scheduler.scheduler import Scheduler
 from collections import deque
 import uuid
 
@@ -12,6 +13,7 @@ class EngineCore:
         self.request_queue = deque()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.outputs = []
+        self.scheduler = Scheduler()
 
 
     def add_request(self,prompt:str,sampling_params:dict = None) -> Request:
@@ -19,24 +21,28 @@ class EngineCore:
         tokenIDs = self._encode_prompt(prompt)
         request = Request(request_id,prompt,tokenIDs,sampling_params)
         
-        self.request_queue.append(request)
-    
+        self.scheduler.add_request(request)
+
     def step(self):
         #从request_queue中取出一个request
-        requests = []
-        requests.append(self.request_queue[0])
-        for request in requests:
-            self.backend.generate(request)
+        request = self.scheduler.schedule()
+
+        if request is None:
+            return None
+        self.backend.generate(request)
+
+        self.scheduler.update()
+        
         
         #在Request被backend处理完以后：
-        for request in requests:
-            output_tokens = request.get_output_token()
-            output_prompt = self.tokenizer.decode(output_tokens)
-            self.outputs.append(output_prompt)
-            self.request_queue.popleft()
+        output_tokens = request.get_output_token()
+        output_prompt = self.tokenizer.decode(output_tokens)
+        self.outputs.append(output_prompt)
     
     def is_running(self) -> bool:
-        return len(self.request_queue) > 0
+        remaining = self.scheduler.check_remaining()
+        return remaining
+
     
     
     def _encode_prompt(self,prompt:str) -> list:
@@ -44,10 +50,6 @@ class EngineCore:
     
     #-----------------------------------#
     #setter and getter
-    def get_queue_top(self) -> Request:
-        return self.request_queue[0]
-    def get_queue_size(self) -> int:
-        return len(self.request_queue)
     
     def get_output(self) -> list:
         return self.outputs
