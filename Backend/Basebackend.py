@@ -11,4 +11,9 @@ class BaseBackend(ABC):
     
     @abstractmethod
     def load_model(self):
+        self.model = model_register.get_model(self.model_name)
+        return
+    
+    @abstractmethod
+    def execute(self,request:Request):
         pass
