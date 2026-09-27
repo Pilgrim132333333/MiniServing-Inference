@@ -1,5 +1,5 @@
 
-from Model.LLM import LLM
+from miniserving.EntryPoints.LLM import LLM
 import time
 
 prompt = "Hello"

@@ -1,7 +1,7 @@
 from transformers import AutoTokenizer
-from Engine.Request import Request
-from Backend.BackendFactory import BackendFactory
-from Scheduler.scheduler import Scheduler
+from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
+from miniserving.Backend.BackendFactory import BackendFactory
+from miniserving.Scheduler.Scheduler import Scheduler
 from collections import deque
 import uuid
 
@@ -16,13 +16,21 @@ class EngineCore:
         self.scheduler = Scheduler()
 
 
-    def add_request(self,prompt:str,sampling_params:dict = None,max_tokens:int = 20) -> Request:
+    def add_sequence_group(self,prompt:str,sampling_params:dict = None) -> SequenceGroup:
         request_id = int(uuid.uuid4().hex,16)
-        tokenIDs = self._encode_prompt(prompt)
+        tokenID = self._encode_prompt(prompt)
         eos_token_id = self.tokenizer.eos_token_id
-        request = Request(request_id,prompt,tokenIDs,sampling_params,max_tokens,eos_token_id)
-        
-        self.scheduler.add_request(request)
+        if sampling_params is None:
+            n = 1
+        else:
+            n = sampling_params.get_n()
+        tokenIDs = [tokenID]*n
+        sequence_group = []
+        for i in range(n):
+            sequence = Sequence(tokenIDs[i])
+            sequence_group.append(sequence)
+        sequence_group = SequenceGroup(request_id,prompt,sequence_group,sampling_params,eos_token_id)
+        self.scheduler.add_sequence_group(sequence_group)
 
     def step(self):
         #从request_queue中取出一个request
@@ -37,11 +45,11 @@ class EngineCore:
         
         
         if self.scheduler.check_remaining():
-            finished_requests = self.scheduler.FINISHED_QUEUE
-            for request in finished_requests:
-                output_tokens = request.get_output_token()
+            finished_sequences = self.scheduler.FINISHED_QUEUE
+            for sequence in finished_sequences:
+                output_tokens = sequence.get_output_tokens()
                 output_prompt = self.tokenizer.decode(output_tokens)
-                request.set_output_prompt(output_prompt)
+                sequence.set_output_prompt(output_prompt)
                 self.outputs.append(output_prompt)
     
     def is_running(self) -> bool:

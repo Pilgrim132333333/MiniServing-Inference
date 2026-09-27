@@ -1,7 +1,7 @@
 import torch
 from transformers import AutoModelForCausalLM
 from typing import TYPE_CHECKING
-from Engine.Request import Request
+from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 model_register = {}
 
 def register_model(model_name:str):

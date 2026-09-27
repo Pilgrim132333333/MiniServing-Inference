@@ -1,7 +1,7 @@
 import torch
-from Backend.TorchBackend import TorchBackend
-from Backend.LlamaBackend import LlamaBackend
-from Backend.Basebackend import BaseBackend
+from miniserving.Backend.TorchBackend import TorchBackend
+from miniserving.Backend.LlamaBackend import LlamaBackend
+from miniserving.Backend.Basebackend import BaseBackend
 
 
 class BackendFactory:

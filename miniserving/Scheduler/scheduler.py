@@ -1,0 +1,100 @@
+from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence,SeqGroupStatus
+from miniserving.Backend.BackendFactory import BackendFactory
+from miniserving.Backend.ExecuteOutput import ExecuteOutput
+from collections import deque
+from transformers import DynamicCache
+import copy
+
+
+
+class Scheduler:
+    def __init__(self):
+        self.WAITING_QUEUE = deque()
+        self.RUNNING_QUEUE = deque()
+        self.FINISHED_QUEUE = deque()
+        self.FAILED_QUEUE = deque()
+        self.batch_size = 16
+    
+    def schedule(self):
+        if not self.check_remaining():
+            return None
+        batch = []
+        while len(self.RUNNING_QUEUE) > 0 and len(batch) < self.batch_size:
+            sequence_group = self.RUNNING_QUEUE[0]
+            for seq in sequence_group.get_sequences():
+                batch.append(seq)
+            return batch
+            
+        sequence_group = self.WAITING_QUEUE[0]
+        self.WAITING_QUEUE.popleft()
+        self.RUNNING_QUEUE.append(sequence_group)
+        for seq in sequence_group.get_sequences():
+            batch.append(seq)
+        return batch
+
+        
+    def add_sequence_group(self,sequence_group:SequenceGroup):
+        #check status
+        if sequence_group.get_status() == SeqGroupStatus.WAITING:
+            self.WAITING_QUEUE.append(sequence_group)
+        else:
+            raise ValueError("SequenceGroup status is not WAITING")
+        
+    def check_remaining(self):
+        if len(self.WAITING_QUEUE) > 0 or len(self.RUNNING_QUEUE) > 0:
+            return True
+        else:
+            return False
+    
+    #Update the status of the request based on the result of executor
+    def update(self,execute_output:ExecuteOutput = None):
+
+        seqs = execute_output.get_seqs()
+        past_key_values = execute_output.get_output_key_values()
+        output_tokens = execute_output.get_output_tokens()
+
+        #prefill update
+        if len(output_tokens) != len(seqs):
+            for seq in seqs:
+                seq.set_output_tokens([output_tokens[0]])
+                new_key_values = self._extract_seq_KV(0,past_key_values)
+                seq.set_past_key_values(new_key_values)
+        
+        #decode update
+        else:
+            for seq in seqs:
+                seq.set_output_tokens([output_tokens[seqs.index(seq)]])
+                new_key_values = past_key_values[seqs.index(seq)]
+                seq.set_past_key_values(new_key_values)
+
+            if self._is_finished(seq):
+                seq.set_status(SeqGroupStatus.FINISHED)
+                self.RUNNING_QUEUE.remove(seq)
+                self.FINISHED_QUEUE.append(seq)
+                self.FAILED_QUEUE.append(seq)
+
+        return
+
+        
+
+    def _is_finished(self,sequence:Sequence):
+        max_tokens = sequence.get_max_tokens()
+        output_tokenIDs = sequence.get_output_tokens()
+        curr_tokens = len(output_tokenIDs)
+        if curr_tokens >= max_tokens or output_tokenIDs[-1] == sequence.get_eos_token_id():
+            return True
+        else:
+            return False
+
+    def _extract_seq_KV(self,batchIndex:int,past_key_values):
+        new_cache = DynamicCache()
+        # transformers>=5.x: DynamicCache 内部是 layers 列表, 每层是 DynamicLayer
+        # past_key_values.layers[layer_idx].keys/.values shape: [B, heads, seq, dim]
+        for layer_idx, layer in enumerate(past_key_values.layers):
+            K = layer.keys
+            V = layer.values
+            K_b = K[batchIndex:batchIndex+1]
+            V_b = V[batchIndex:batchIndex+1]
+            new_cache.update(K_b, V_b, layer_idx)
+        
+        return new_cache

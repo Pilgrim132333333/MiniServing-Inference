@@ -1,13 +1,10 @@
 from abc import ABC, abstractmethod
-from Engine.Request import Request
-from Backend.model.model_register import model_register
+from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
+from miniserving.Backend.model.model_register import model_register
 class BaseBackend(ABC):
     def __init__(self,model_name:str):
         self.model_name = model_name
         self.model = None
-    @abstractmethod
-    def generate(self,request:Request) -> list:
-        pass# 返回token list
     
     @abstractmethod
     def load_model(self):
@@ -15,5 +12,5 @@ class BaseBackend(ABC):
         return
     
     @abstractmethod
-    def execute(self,request:Request):
+    def execute(self,request:Sequence):
         pass
