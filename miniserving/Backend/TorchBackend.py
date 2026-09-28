@@ -43,6 +43,7 @@ class TorchBackend(BaseBackend):
             for logit in out_put_logits:
                 next_token_ids.append(torch.argmax(logit[-1,:]).item())
         execute_output = ExecuteOutput(batch,next_token_ids,output_key_values)
+
         return execute_output
         
     def execute_prefill(self,batch: list[Sequence]):
@@ -59,5 +60,5 @@ class TorchBackend(BaseBackend):
         next_token_ids = torch.argmax(out_put_logits[-1,:]).item()
             
 
-        execute_output = ExecuteOutput(batch,[next_token_ids],out_put_pasts)
+        execute_output = ExecuteOutput(batch,[next_token_ids],[out_put_pasts])
         return execute_output

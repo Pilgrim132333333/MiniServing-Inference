@@ -10,10 +10,10 @@ class EngineCore:
     def __init__(self,model_name:str, backend_type:str = "torch"):
         self.model_name = model_name
         self.backend = BackendFactory(model_name).instance(backend_type)
-        self.request_queue = deque()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.outputs = []
         self.scheduler = Scheduler()
+        self.output = []
 
 
     def add_sequence_group(self,prompt:str,sampling_params:dict = None) -> SequenceGroup:
@@ -25,11 +25,11 @@ class EngineCore:
         else:
             n = sampling_params.get_n()
         tokenIDs = [tokenID]*n
-        sequence_group = []
-        for i in range(n):
-            sequence = Sequence(tokenIDs[i])
-            sequence_group.append(sequence)
-        sequence_group = SequenceGroup(request_id,prompt,sequence_group,sampling_params,eos_token_id)
+        seqs = [Sequence(tokenIDs[i]) for i in range(n)]
+        sequence_group = SequenceGroup(request_id,prompt,[],sampling_params,eos_token_id)
+        for sequence in seqs:
+            sequence_group.add_sequence(sequence)
+    
         self.scheduler.add_sequence_group(sequence_group)
 
     def step(self):
@@ -46,11 +46,13 @@ class EngineCore:
         
         if self.scheduler.check_remaining():
             finished_sequences = self.scheduler.FINISHED_QUEUE
-            for sequence in finished_sequences:
-                output_tokens = sequence.get_output_tokens()
-                output_prompt = self.tokenizer.decode(output_tokens)
-                sequence.set_output_prompt(output_prompt)
-                self.outputs.append(output_prompt)
+            for sequence_group in finished_sequences:
+                print(sequence_group+"ada")
+                for sequence in sequence_group.get_sequences():
+                    output_tokens = sequence.get_output_tokens()
+                    output_prompt = self.tokenizer.decode(output_tokens)
+                    sequence.set_output_prompt(output_prompt)
+                    self.output.append(output_prompt)
     
     def is_running(self) -> bool:
         remaining = self.scheduler.check_remaining()
@@ -61,6 +63,5 @@ class EngineCore:
     
     #-----------------------------------#
     #setter and getter
-    
     def get_output(self) -> list:
-        return self.outputs
+        return self.output

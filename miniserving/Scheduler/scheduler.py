@@ -52,37 +52,45 @@ class Scheduler:
         seqs = execute_output.get_seqs()
         past_key_values = execute_output.get_output_key_values()
         output_tokens = execute_output.get_output_tokens()
+        seq = seqs[0]
 
         #prefill update
-        if len(output_tokens) != len(seqs):
+        if seq.get_past_key_values() is None:
             for seq in seqs:
                 seq.set_output_tokens([output_tokens[0]])
-                new_key_values = self._extract_seq_KV(0,past_key_values)
+                new_key_values = self._extract_seq_KV(0,past_key_values[0])
                 seq.set_past_key_values(new_key_values)
         
         #decode update
         else:
             for seq in seqs:
-                seq.set_output_tokens([output_tokens[seqs.index(seq)]])
+                seq.add_output_token(output_tokens[seqs.index(seq)])
                 new_key_values = past_key_values[seqs.index(seq)]
                 seq.set_past_key_values(new_key_values)
 
-            if self._is_finished(seq):
-                seq.set_status(SeqGroupStatus.FINISHED)
-                self.RUNNING_QUEUE.remove(seq)
-                self.FINISHED_QUEUE.append(seq)
-                self.FAILED_QUEUE.append(seq)
-
+                if self._is_finished(seq) == True:
+                    sequence_group = seq.get_sequence_group()
+                    check = True
+                    for seq in sequence_group.get_sequences():
+                        if not self._is_finished(seq):
+                            check = False
+                    if check:
+                        sequence_group.set_status(SeqGroupStatus.FINISHED)
+                        self.RUNNING_QUEUE.remove(sequence_group)
+                        self.FINISHED_QUEUE.append(sequence_group)
         return
 
         
 
     def _is_finished(self,sequence:Sequence):
+        if sequence.check_finished() == True:
+            return True
         max_tokens = sequence.get_max_tokens()
         output_tokenIDs = sequence.get_output_tokens()
         curr_tokens = len(output_tokenIDs)
         if curr_tokens >= max_tokens or output_tokenIDs[-1] == sequence.get_eos_token_id():
-            return True
+            sequence.set_finished()
+            return sequence.check_finished()
         else:
             return False
 

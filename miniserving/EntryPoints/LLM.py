@@ -1,9 +1,11 @@
 from miniserving.Engine.EngineCore import EngineCore
-from miniserving.server.Request import Request
+from miniserving.EntryPoints.Request import Request
 class LLM:
     def __init__(self,LLM_name:str,):
         self.model_name = LLM_name
         self.engineCore = EngineCore(self.model_name)
+    
+    #现在仅支持single prompt/ single request
     def generate(self,request,sampling_params:dict = None):
         if isinstance(request,Request):
             prompt = request.get_prompt()
