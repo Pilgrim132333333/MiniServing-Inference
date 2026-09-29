@@ -1,27 +1,33 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-from miniserving.EntryPoints.LLM import LLM
-import requests
+import uuid
+from miniserving.Engine.AsyncEngineCore import AsyncEngineCore
+from miniserving.EntryPoints.Request import Request
+from miniserving.EntryPoints.Response import Response
+from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 
-app = FastAPI()
-llm = LLM("gpt2")
+async def lifespan(app: FastAPI):
+    llm.engine.start()
+    yield
+    await llm.engine.stop()
+app = FastAPI(lifespan=lifespan)
+llm = AsyncEngineCore("gpt2")
 
 
-@app.post("/generate", response_model=None)
-def generate(request: dict):
-    print("Begin")
-    output = llm.generate(request)
-    return output
+@app.post("/generate", response_model=Response)
+async def generate(request: Request):
+    output = await llm.add_request(request)
+    return Response(output=output)
 
 @app.post("/v1/completion")
-def completion(request: dict):
+def completion(request: Request):
     output = llm.generate(request)
-    return output
+    return Response(output=output)
 
 @app.post("/v1/chat/completion")
-def chat_completion(request: dict):
+def chat_completion(request: Request):
     output = llm.generate(request)
-    return output
+    return Response(output=output)
 
 @app.post("/v1/models")
 def models():

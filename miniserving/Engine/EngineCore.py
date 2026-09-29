@@ -2,7 +2,6 @@ from transformers import AutoTokenizer
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 from miniserving.Backend.BackendFactory import BackendFactory
 from miniserving.Scheduler.Scheduler import Scheduler
-from collections import deque
 import uuid
 
 

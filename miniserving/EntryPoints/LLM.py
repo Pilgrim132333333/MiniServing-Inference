@@ -1,5 +1,4 @@
 from miniserving.Engine.EngineCore import EngineCore
-from miniserving.EntryPoints.Request import Request
 class LLM:
     def __init__(self,LLM_name:str,):
         self.model_name = LLM_name

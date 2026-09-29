@@ -106,3 +106,6 @@ class Scheduler:
             new_cache.update(K_b, V_b, layer_idx)
         
         return new_cache
+    
+    def remove_sequence_group(self,sequence_group:SequenceGroup):
+        self.FINISHED_QUEUE.remove(sequence_group)
