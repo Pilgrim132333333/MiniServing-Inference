@@ -19,7 +19,6 @@ class AsyncEngineCore:
     
     def stop(self):
         self.task.cancel()
-        self.backend.close_model()
     
     def load_model(self):
         self.backend.load_model()
@@ -32,49 +31,50 @@ class AsyncEngineCore:
         self.add_sequenceGroup(prompt,sampling_params,request_id)
         return self.message_queue[request_id]
 
-    def add_sequenceGroup(self,prompt:str,sampling_params:dict,request_id:str):
+    def add_sequenceGroup(self, prompt: str, sampling_params: dict, request_id: str):
         eos_token_id = self.tokenizer.eos_token_id
         if sampling_params is None:
-            n = 1
-        else:
-            n = sampling_params["n"]
-        sequenceGroup = SequenceGroup(prompt,sampling_params,request_id,eos_token_id)
-        for i in range(n):
-            sequenceGroup.add_sequence(Sequence(self.tokenizer.encode(prompt)))
-        
+            sampling_params = {}
+        n = sampling_params.get("n", 1)
+        sequences = [Sequence(self.tokenizer.encode(prompt)) for _ in range(n)]
+        sequenceGroup = SequenceGroup(
+            request_id=request_id,
+            prompt=prompt,
+            sequences=sequences,
+            sampling_params=sampling_params,
+            eos_token_id=eos_token_id
+        )
         self.scheduler.add_sequence_group(sequenceGroup)
         return sequenceGroup
     
-    def step():
-        #从request_queue中取出一个request
+    def step(self):
         batch = self.scheduler.schedule()
-
         if batch is None:
             return None
-
         execute_output = self.backend.execute(batch)
-    
         self.scheduler.update(execute_output)
-        
         return
 
     def _drain(self):
-        finished_sequences = self.scheduler.FINISHED_QUEUE
-        for sequence_group in finished_sequences:
-            request_id = sequence_group.get_request_id()
+        finished = list(self.scheduler.FINISHED_QUEUE)
+        for sg in finished:
+            request_id = sg.request_id
             output_prompts = []
-            print(sequence_group+"ada")
-            for sequence in sequence_group.get_sequences():
-                output_tokens = sequence.get_output_tokens()
+            for seq in sg.get_sequences():
+                output_tokens = seq.get_output_tokens()
                 output_prompt = self.tokenizer.decode(output_tokens)
-                sequence.set_output_prompt(output_prompt)
+                seq.set_output_prompt(output_prompt)
                 output_prompts.append(output_prompt)
-            self.message_queue[request_id].set_result(output_prompts)
-            self.scheduler.remove_sequence_group(sequence_group)
-    
+            if request_id in self.message_queue:
+                self.message_queue[request_id].set_result(output_prompts)
+            self.scheduler.remove_sequence_group(sg)
+
     async def _run(self):
         while True:
-            asyncio.to_thread(self.step)
-            _drain()
+            try:
+                await asyncio.to_thread(self.step)
+                self._drain()
+            except Exception as e:
+                print(f"[_run ERROR] {type(e).__name__}: {e}")
             await asyncio.sleep(0.1)
             

@@ -61,6 +61,7 @@ class Sequence:
         return
     def get_output_prompt(self):
         return self.output_prompt
+    
 class SeqGroupStatus(Enum):
     WAITING = 0
     RUNNING = 1
@@ -74,10 +75,13 @@ class SequenceGroup:
         self.sampling_params = sampling_params
         self.status = SeqGroupStatus.WAITING
         self.eos_token_id = eos_token_id
-        self.max_tokens = (sampling_params or {}).get("max_tokens", 20)
+        if sampling_params:
+            self.max_tokens = sampling_params["max_tokens"]
+        else:
+            self.max_tokens = 20
 
         for sequence in sequences:
-            sequence.set_sequence_group(self)
+            sequence.sequence_group = self
     
     def get_sequences(self):
         return self.sequences

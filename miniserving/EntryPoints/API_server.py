@@ -7,16 +7,17 @@ from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 
 async def lifespan(app: FastAPI):
-    llm.engine.start()
+    llm.start()
     yield
-    await llm.engine.stop()
+    llm.stop()
 app = FastAPI(lifespan=lifespan)
-llm = AsyncEngineCore("gpt2")
+llm = AsyncEngineCore("GPT2")
 
 
 @app.post("/generate", response_model=Response)
 async def generate(request: Request):
-    output = await llm.add_request(request)
+    future = await llm.add_request(request)
+    output = await future
     return Response(output=output)
 
 @app.post("/v1/completion")
