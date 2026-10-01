@@ -1,8 +1,10 @@
 from enum import Enum
+import uuid
 
 class Sequence:
     def __init__(self,tokenIDs:list):
         self.input_tokenIDs = tokenIDs
+        self.sequence_id = str(uuid.uuid4())
         self.output_tokenIDs= []
         self.is_finished = False
         self.eos_token_id = None

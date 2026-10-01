@@ -2,6 +2,8 @@ from miniserving.Backend.model.model_register import model_register
 from miniserving.Backend.Basebackend import BaseBackend
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 from miniserving.Backend.ExecuteOutput import ExecuteOutput
+from miniserving.Backend.kvCache.KvCache import KvCache
+from miniserving.Backend.kvCache.BlockManager import BlockManager
 import torch
 class TorchBackend(BaseBackend):
     def __init__(self,model_name:str):
@@ -47,6 +49,7 @@ class TorchBackend(BaseBackend):
         return execute_output
         
     def execute_prefill(self,batch: list[Sequence]):
+        self.allocate_key_values(batch)
         seq = batch[0]
         input_tokens = seq.get_input_tokens()
         input_tensors = torch.tensor([input_tokens])
@@ -62,3 +65,12 @@ class TorchBackend(BaseBackend):
 
         execute_output = ExecuteOutput(batch,[next_token_ids],[out_put_pasts])
         return execute_output
+    
+    def allocate_key_values(self,batch):
+        if isinstance(batch,list):
+            self.kv_cache.init_all_layers()
+            for seq in batch:
+                seq.set_past_key_values(self.kv_cache.get_layer(seq.get_sequence_group()).past_key_values)
+        else:
+            
+        return

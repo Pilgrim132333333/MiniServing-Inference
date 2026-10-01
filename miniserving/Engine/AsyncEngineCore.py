@@ -42,7 +42,7 @@ class AsyncEngineCore:
             prompt=prompt,
             sequences=sequences,
             sampling_params=sampling_params,
-            eos_token_id=eos_token_id
+            eos_token_id=eos_token_id,
         )
         self.scheduler.add_sequence_group(sequenceGroup)
         return sequenceGroup
