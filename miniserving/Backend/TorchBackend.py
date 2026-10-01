@@ -8,6 +8,7 @@ import torch
 class TorchBackend(BaseBackend):
     def __init__(self,model_name:str):
         super().__init__(model_name)
+        self.blockManager = BlockManager(self.model_config,self.block_size,KvCache(self.model_config))
 
     def load_model(self):
         model_name = self.model_name
@@ -49,7 +50,7 @@ class TorchBackend(BaseBackend):
         return execute_output
         
     def execute_prefill(self,batch: list[Sequence]):
-        self.allocate_key_values(batch)
+        self._init_key_values(batch)
         seq = batch[0]
         input_tokens = seq.get_input_tokens()
         input_tensors = torch.tensor([input_tokens])
@@ -66,11 +67,7 @@ class TorchBackend(BaseBackend):
         execute_output = ExecuteOutput(batch,[next_token_ids],[out_put_pasts])
         return execute_output
     
-    def allocate_key_values(self,batch):
-        if isinstance(batch,list):
-            self.kv_cache.init_all_layers()
-            for seq in batch:
-                seq.set_past_key_values(self.kv_cache.get_layer(seq.get_sequence_group()).past_key_values)
-        else:
+    def _init_key_values(self,batch):
+        
             
         return

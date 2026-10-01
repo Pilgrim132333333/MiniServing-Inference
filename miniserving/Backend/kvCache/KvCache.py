@@ -6,29 +6,24 @@ from miniserving.utils import logger
 class PagedLayer(CacheLayerMixin):
     def __init__(self):
         super().__init__()
+        self.key_tensor = None
+        self.value_tensor = None
 
     def update(self,keys,values):
-        """
-        更新当前层的 key-value 缓存，同时我们需要更新page Table，动态管理block
-        """
-        self.keys = keys
-        self.values = values
+        pass
 
 class KvCache(Cache):
-    def __init__(self,model_config,block_size: int):
-        """
-        self.layers[i] = DynamicLayer(
-        keys   = [batch, num_kv_heads, seq_len, head_dim],   ← 第 i 层所有历史 token 的 K
-        values = [batch, num_kv_heads, seq_len, head_dim],   ← 第 i 层所有历史 token 的 V
-        )
-        """
+    def __init__(self,model_config,block_size: int,block_manager: BlockManager):
+       
         self.model_config = model_config
         self.layer_num = model_config.n_layer
         self.num_kv_heads = model_config.num_key_value_heads
         self.head_dim = model_config.n_embd
         self.dtype = model_config.torch_dtype
         self.byte_per_block = None
+        self.block_Manager = block_manager
         pagelayers = [PagedLayer() for _ in range(self.layer_num)]
+        self.init_all_layers()
         super().__init__(layers=pagelayers)
     
     def init_layer_KV_Cache(self):
@@ -71,3 +66,12 @@ class KvCache(Cache):
             self.init_layer(layer)
         
         return
+    
+    def load_memory(self):
+        """
+        全局唯一一次申请内存
+        """
+        self.init_all_layers()
+    
+    def update(self,key_states, value_states, layer_idx, cache_kwargs):
+        pass

@@ -1,5 +1,6 @@
 from enum import Enum
 import uuid
+from miniserving.Backend.kvCache.kvCache import kvCache
 
 class Sequence:
     def __init__(self,tokenIDs:list):
@@ -12,6 +13,7 @@ class Sequence:
         self.sequence_group = None
         self.max_tokens = self.sequence_group.max_tokens if self.sequence_group else 20
         self.is_finished = False
+        self.sequence_id = str(uuid.uuid4())
 
     def check_finished(self):
         return self.is_finished
@@ -33,7 +35,7 @@ class Sequence:
 
     def get_past_key_values(self):
         return self.past_key_values
-    def set_past_key_values(self,past_key_values:tuple):
+    def set_past_key_values(self,past_key_values:kvCache):
         self.past_key_values = past_key_values
         return
 
