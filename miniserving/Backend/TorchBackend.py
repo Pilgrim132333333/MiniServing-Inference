@@ -52,9 +52,16 @@ class TorchBackend(BaseBackend):
     def execute_prefill(self,batch: list[Sequence]):
         self._init_key_values(batch)
         seq = batch[0]
-        input_tokens = seq.get_input_tokens()
-        input_tensors = torch.tensor([input_tokens])
+    
 
+        #check if chunked
+        if seq.get_chunk() is not None:
+            input_tensors = torch.tensor([seq.get_chunk()[seq.get_chunk_index()]])
+        
+        else:
+            input_tokens = seq.get_input_tokens()
+            input_tensors = torch.tensor([input_tokens])
+            
         #一次prefill
         output = self.model.model(input_tensors,use_cache=True)
         out_put_logits = output.logits

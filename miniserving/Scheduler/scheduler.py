@@ -14,6 +14,7 @@ class Scheduler:
         self.FINISHED_QUEUE = deque()
         self.FAILED_QUEUE = deque()
         self.batch_size = 16
+        self.chunk_block = 16
     
     def schedule(self):
         if not self.check_remaining():
@@ -25,9 +26,16 @@ class Scheduler:
                 batch.append(seq)
             return batch
             
+        #Enter Prefill Period
         sequence_group = self.WAITING_QUEUE[0]
         self.WAITING_QUEUE.popleft()
         self.RUNNING_QUEUE.append(sequence_group)
+
+        #chunked prefill
+        if self.check_if_chunk(sequence_group):
+            chunk = self.chunk(sequence_group)
+            sequence_group[0].set_chunk(chunk)
+
         for seq in sequence_group.get_sequences():
             batch.append(seq)
         return batch
@@ -55,11 +63,27 @@ class Scheduler:
         seq = seqs[0]
 
         #prefill update
-        if seq.get_past_key_values() is None:
-            for seq in seqs:
-                seq.set_output_tokens([output_tokens[0]])
-                new_key_values = self._extract_seq_KV(0,past_key_values[0])
-                seq.set_past_key_values(new_key_values)
+        if seq.is_prefilling:
+            if execute_output.chunk_index is None:
+                for seq in seqs:
+                    seq.update_computed_tokens(len(seq.get_input_tokens()))
+                    seq.set_output_tokens([output_tokens[0]])
+                    new_key_values = self._extract_seq_KV(0,past_key_values[0])
+                    seq.set_past_key_values(new_key_values)
+            else:
+                chunk_size = self.chunk_block
+                chunk_index = seq.get_chunk_index()
+                if chunk_index == len(seq.input_tokenIDs) // chunk_size:
+                    for seq in seqs:
+                        seq.update_computed_tokens(len(seq.get_input_tokens())-chunk_size*chunk_index)
+                        seq.set_output_tokens([output_tokens[0]])
+                        new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])
+                        seq.set_past_key_values(new_key_values)
+                else:
+                    for seq in seqs:
+                        seq.update_computed_tokens((chunk_index+1)*chunk_size)
+                        new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])
+                        seq.set_past_key_values(new_key_values)
         
         #decode update
         else:
@@ -109,3 +133,19 @@ class Scheduler:
     
     def remove_sequence_group(self,sequence_group:SequenceGroup):
         self.FINISHED_QUEUE.remove(sequence_group)
+
+    def check_if_chunk(self,sequence_group:SequenceGroup):
+        example_seq = sequence_group.get_sequences()[0]
+        seq_size = len(example_seq.get_input_tokens())
+        return seq_size > self.chunk_block
+    
+    def chunk(self,sequence_group:SequenceGroup):
+        example_seq = sequence_group.get_sequences()[0]
+        seq_size = len(example_seq.get_input_tokens())
+        input_tokens = example_seq.get_input_tokens()
+        chunk = []
+        cnt = 0
+        while cnt < seq_size:
+            chunk.append(input_tokens[cnt:cnt+self.chunk_block])
+            cnt += self.chunk_block
+        return chunk

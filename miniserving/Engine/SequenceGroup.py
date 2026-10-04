@@ -9,11 +9,14 @@ class Sequence:
         self.output_tokenIDs= []
         self.is_finished = False
         self.eos_token_id = None
+        self.computed_tokens = 0
         self.past_key_values = None
         self.sequence_group = None
         self.max_tokens = self.sequence_group.max_tokens if self.sequence_group else 20
         self.is_finished = False
         self.sequence_id = str(uuid.uuid4())
+        self.chunk = None
+        self.chunk_index = None
 
     def check_finished(self):
         return self.is_finished
@@ -65,6 +68,25 @@ class Sequence:
         return
     def get_output_prompt(self):
         return self.output_prompt
+
+    @property
+    def is_prefilling(self):
+        return self.computed_tokens < self.input_tokenIDs
+    
+    def update_computed_tokens(self,num_tokens:int):
+        self.computed_tokens += num_tokens
+        self.chunk_index += 1
+        return
+    
+    def set_chunk(self,chunk:[]):
+        self.chunk = chunk
+        self.chunk_index = 0
+        return
+    def get_chunk(self):
+        return self.chunk
+        
+    def get_chunk_index(self):
+        return self.chunk_index
     
 class SeqGroupStatus(Enum):
     WAITING = 0
