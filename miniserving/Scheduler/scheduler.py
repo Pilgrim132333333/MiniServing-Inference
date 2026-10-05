@@ -4,6 +4,7 @@ from miniserving.Backend.ExecuteOutput import ExecuteOutput
 from collections import deque
 from transformers import DynamicCache
 import copy
+import time
 
 
 
@@ -24,6 +25,7 @@ class Scheduler:
             sequence_group = self.RUNNING_QUEUE[0]
             for seq in sequence_group.get_sequences():
                 batch.append(seq)
+                seq.set_first_schedule_time(time.time())
             return batch
             
         #Enter Prefill Period
@@ -38,6 +40,7 @@ class Scheduler:
 
         for seq in sequence_group.get_sequences():
             batch.append(seq)
+            seq.set_first_schedule_time(time.time())
         return batch
 
         
@@ -73,13 +76,13 @@ class Scheduler:
             else:
                 chunk_size = self.chunk_block
                 chunk_index = seq.get_chunk_index()
-                if chunk_index == len(seq.input_tokenIDs) // chunk_size:
+                if chunk_index == len(seq.input_tokenIDs) // chunk_size: #此时是已经产生新的token
                     for seq in seqs:
                         seq.update_computed_tokens(len(seq.get_input_tokens())-chunk_size*chunk_index)
                         seq.set_output_tokens([output_tokens[0]])
                         new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])
                         seq.set_past_key_values(new_key_values)
-                else:
+                else: #此时仍然处于prefill阶段
                     for seq in seqs:
                         seq.update_computed_tokens((chunk_index+1)*chunk_size)
                         new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])

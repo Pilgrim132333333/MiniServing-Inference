@@ -1,22 +1,25 @@
+from typing import TYPE_CHECKING
 from miniserving.Backend.kvCache.Block import BlockPool,Block
-from miniserving.Backend.kvCache.KvCache import KvCache
-
-from miniserving.Engine.Sequence import Sequence,SequenceGroup
+from transformers import Cache
+from miniserving.utils.logger import set_logger
 import math
 
+if TYPE_CHECKING:
+    from miniserving.Engine.SequenceGroup import Sequence, SequenceGroup
+
 class BlockManager:
-    def __init__(self,model_config,block_size: int,cache:KvCache):
+    def __init__(self,model_config,block_size: int):
         self.model_config = model_config
         self.layer_num = model_config.n_layer
         self.num_kv_heads = model_config.num_key_value_heads
         self.head_dim = model_config.n_embd
         self.dtype = model_config.torch_dtype
         self.byte_per_block = None
-        self.block_table = {} # cache-> list[Block]
-        self.cache = cache
-        self.k_tensor,self.v_tensor = self.init_layer_KV_Cache() #shape[num_blocks,batch_size,num_kv_heads,head_dim]
-        self.k_pool = BlockPool()
-        self.v_pool = BlockPool()
+        self.block_table = {} # sequence_id-> list[Block_ID]
+        self.k_tensor,self.v_tensor = self.init_real_memory() #shape[num_layer,num_blocks,num_kv_heads,head_dim]
+        self.pool = BlockPool({"block_size":block_size,"num_blocks":self.layer_num*self.num_kv_heads})
+
+        self.logger = logger.set_logger(__name__)
 
         
     def calculate_single_layer_single_token(self):
@@ -51,7 +54,7 @@ class BlockManager:
         检查当前序列是否有足够的 block
         """
         num_blocks = self.caculate_num_blocks(seq)
-        return num_blocks <= len(self.k_pool.free_blocks) and num_blocks <= len(self.v_pool.free_blocks)
+        return num_blocks <= len(self.pool.free_blocks)
     
     def allocate_sequence(self,seq: Sequence):
         """
@@ -65,8 +68,8 @@ class BlockManager:
             allocated = []
             num_blocks = self.caculate_num_blocks(seq)
             for i in range(num_blocks):
-                allocated.append(self.blockPool.allocate())
-            self.update_allocated_table(allocated,seq)
+                allocated.append(self.pool.allocate().block_id)
+            self.update_allocated_table(allocated,seq.request_id)
             return allocated
         
     def allocate_sequence_group(self,seqGroup: SequenceGroup):
@@ -79,59 +82,55 @@ class BlockManager:
             self.update_allocated_table(allocated,seq)
         return
 
-    def update_allocated_table(self,allocated: list[Block],cache: Cache):
+    def update_allocated_table(self,allocated: list[int],sequence_id: str):
         """
         更新已分配 block 表
         """
-        self.block_table[cache] = allocated
+        self.block_table[sequence_id] = allocated
         return
     
-    def get_allocated_blocks(self,cache: Cache):
+    def get_allocated_blocks(self,sequence_id: str) -> list[int]:
         """
         获取当前序列已分配的 block id
         """
-        if cache not in self.block_table:
+        if sequence_id not in self.block_table:
             return []
-        return self.block_table[cache]
+        return self.block_table[sequence_id]
     
-    def calculate_slot(self,cache: Cache):
+    def calculate_slot(self,sequence_id: str):
         """
         计算当前序列的 slot 数
         """
-        allocated_blocks = self.get_allocated_blocks(cache)
-        num_tokens = cache.num_tokens
+        allocated_blocks = self.get_allocated_blocks(sequence_id)
+        num_tokens = len(allocated_blocks) * self.block_size
         num_blocks = len(allocated_blocks)
         slot = num_blocks % ((num_blocks-1 )* self.block_size)
         return slot
     
-    def check_if_allocate_block(self,cache: Cache):
+    def check_if_allocate_block(self,sequence_id: str,num_tokens: int):
         """
         判断这个sequence是否需要新分配block
         """
-        
-        num_token = cache.num_tokens
-        slot = num_token % self.block_size
-        last_block = cache.last_block
+        slot = num_tokens % self.block_size
+        last_block_id = self.get_allocated_blocks(sequence_id)[-1]
         
         if slot==self.block_size:
             return True
-        elif slot>last_block.slot_size:
+        elif slot>self.block_size:
             raise ValueError(f"Slot Error: {slot}")
         else:
-            if last_block.ref_count>0:
+            if self.pool.getBlock(last_block_id).ref_count>0:
                 return True
             else:
                 return False
+        return
         
-
     def init_real_memory(self):
         k_tensors = []
         v_tensors = []
+        # 初始化 KV 缓存
+        # kv_tensor 代表每个 layer 对应的所有缓存
         for layer in range(self.layer_num):
-        """
-        初始化 KV 缓存
-        kv_tensor代表每个layer对应的所有缓存
-        """
             try:
                 k_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
                 dtype=self.dtype,
@@ -147,37 +146,37 @@ class BlockManager:
                 requires_grad = False)
 
             except:
-                logger.error("KV 缓存初始化失败")
+                self.logger.error("KV 缓存初始化失败")
                 return  
 
-            logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
-            logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize()} bytes")
-            logger.info(f"Layer {layer} V 缓存初始化完成，大小为：{v_tensor.shape}，dtype为：{v_tensor.dtype},device:{v_tensor.device},dim:{v_tensor.dim()},总元素数：{v_tensor.numel()}")          
-            logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize()} bytes") 
+            self.logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
+            self.logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize()} bytes")
+            self.logger.info(f"Layer {layer} V 缓存初始化完成，大小为：{v_tensor.shape}，dtype为：{v_tensor.dtype},device:{v_tensor.device},dim:{v_tensor.dim()},总元素数：{v_tensor.numel()}")          
+            self.logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize()} bytes") 
             k_tensors.append(k_tensor)
             v_tensors.append(v_tensor)
         
         return k_tensors,v_tensors
     
-    def next_token_block(self,cache: Cache):
+    def next_token_block(self,sequence_id: str):
         """
         获取下一个token对应的block ID
         """
-        if self.check_if_allocate_block(cache):
-            return [self.k_pool.allocate(),self.v_pool.allocate()]
+        if self.check_if_allocate_block(sequence_id):
+            return self.pool.allocate().block_id
         else:
-            return last_block.block_id
-        
-    def update_layer(self,cache: Cache,key_states,value_states,layer_index: int):
+            return self.block_table[sequence_id][-1]
+    
+    def update_layer(self,cache: Cache,key_states,value_states,layer_index: int,sequence_id: str):
 
         """
         更新当前layer的缓存, 
         key_states and value_states : [batch_size,num_kv_heads,num_new_token,head_dim]
         在判断Cow后，我们仍然需要区分是进入prefill阶段还是decode阶段
         """
-        next_block = self.next_token_block(cache)
-        last_block = cache.block_table[-1]
-        num_token = cache.num_tokens
+        next_block = self.next_token_block(sequence_id)
+        last_block = self.get_allocated_blocks(sequence_id)[-1]
+        num_token = last_block.num_tokens
         if next_block == last_block.block_id:
             """
             不需要Cow,直接在当前block续写
@@ -188,11 +187,10 @@ class BlockManager:
             """
             filled = num_token % self.block_size
             
-            new_view = self.k_pool[layer_index][next_block]
-            new_view[:filled].copy_(self.k_pool[layer_index][last_block.block_id][:filled])
-            new_view = self.v_pool[layer_index][next_block]
-            new_view[:filled].copy_(self.v_pool[layer_index][last_block.block_id][:filled])
-        
+            new_view = self.pool[layer_index][next_block]
+            new_view[:filled].copy_(self.pool[layer_index][last_block.block_id][:filled])
+            new_view = self.pool[layer_index][next_block]
+            new_view[:filled].copy_(self.pool[layer_index][last_block.block_id][:filled])
         """
         判断是否需要进入prefill阶段还是decode阶段
         """
@@ -220,23 +218,23 @@ class BlockManager:
             num_write_token = 0
             num_write_token += remaining
             for i in range(remaining):
-                new_view = self.k_pool[layer_index][next_block]
+                new_view = self.pool[layer_index][next_block]
                 new_view[:filled+i].copy_(key_states[:,i,:])
                 new_view[:filled+i].copy_(value_states[:,i,:])
             
             #allocate new block
             while num_write_token < num_tokens:
-                new_block = self.blockPool.allocate()
+                new_block = self.pool.allocate()
                 cur_block_filled = 0
                 while cur_block_filled < self.block_size and num_write_token < num_tokens:
-                    new_view = self.k_pool[layer_index][new_block]
+                    new_view = self.pool[layer_index][new_block]
                     new_view[cur_block_filled].copy_(key_states[:,num_write_token,:])
                     new_view[cur_block_filled].copy_(value_states[:,num_write_token,:])
                     cur_block_filled += 1
                     num_write_token += 1
         else:
             for i in range(num_tokens):
-                new_view = self.k_pool[layer_index][next_block]
+                new_view = self.pool[layer_index][next_block]
                 new_view[:filled+i].copy_(key_states[:,i,:])
                 new_view[:filled+i].copy_(value_states[:,i,:])
     
@@ -246,8 +244,8 @@ class BlockManager:
         这里的key_states 和 value_states 都是 [num_kv_heads,1,head_dim]
         我们需要将它们复制到新block的缓存中
         """
-        new_view = self.k_pool[layer_index][next_block]
+        new_view = self.pool[layer_index][next_block]
         new_view[:filled].copy_(key_states[:,0,:])
-        new_view = self.v_pool[layer_index][next_block]
+        new_view = self.pool[layer_index][next_block]
         new_view[:filled].copy_(value_states[:,0,:])
 

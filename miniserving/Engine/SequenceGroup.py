@@ -1,6 +1,6 @@
 from enum import Enum
 import uuid
-from miniserving.Backend.kvCache.kvCache import kvCache
+from miniserving.Backend.kvCache.KvCache import KvCache
 
 class Sequence:
     def __init__(self,tokenIDs:list):
@@ -17,15 +17,27 @@ class Sequence:
         self.sequence_id = str(uuid.uuid4())
         self.chunk = None
         self.chunk_index = None
+        self.first_schedule_time = None
+        self.first_output_token_time = None
+        
 
     def check_finished(self):
         return self.is_finished
-
+    
+    def set_first_schedule_time(self,first_schedule_time:float):
+        self.first_schedule_time = first_schedule_time
+        return
+    
+    def get_first_schedule_time(self):
+        return self.first_schedule_time
+    
     def get_output_tokens(self):
         return self.output_tokenIDs
     def set_output_tokens(self,tokenIDs:list):
         self.output_tokenIDs = tokenIDs
+        self.first_output_token_time = time.time()
         return
+        
     def add_output_token(self,tokenID:int):
         self.output_tokenIDs.append(tokenID)
         return
@@ -38,7 +50,7 @@ class Sequence:
 
     def get_past_key_values(self):
         return self.past_key_values
-    def set_past_key_values(self,past_key_values:kvCache):
+    def set_past_key_values(self, past_key_values: KvCache):
         self.past_key_values = past_key_values
         return
 
@@ -101,6 +113,7 @@ class SequenceGroup:
         self.sampling_params = sampling_params
         self.status = SeqGroupStatus.WAITING
         self.eos_token_id = eos_token_id
+        self.arrival_time = time.time()
         if sampling_params:
             self.max_tokens = sampling_params["max_tokens"]
         else:

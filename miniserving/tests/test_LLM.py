@@ -1,25 +1,11 @@
 
-from miniserving.EntryPoints.AsyncEngineCore import AsyncEngineCore
-from miniserving.EntryPoints.API_server import app
+from miniserving.Engine.EngineCore import EngineCore
 import time
 import pytest
-from fastapi.testclient import TestClient
-import requests
 
-@pytest.fixture
-def llm():
-    return AsyncEngineCore("GPT2")
 
-client = TestClient(app)
-
-def test_API_generate():
-    prompt = "Hello"
-    response = client.post("/generate", json={"prompt": prompt})
-    print(response.json())
-    assert response.status_code == 200
-    assert response.json()["output"] is not None
-
-def test_generate(llm):
+def test_generate():
+    llm = EngineCore("GPT2")
     prompt = "Hello"
 
     start = time.time()

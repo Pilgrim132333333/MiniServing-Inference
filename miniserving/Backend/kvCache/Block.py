@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import Optional
 
 
 @dataclass
@@ -15,6 +14,14 @@ class BlockPool:
         self.Pool_spec = Pool_spec
         self.free_blocks = []
         self.block_size = Pool_spec["block_size"]
+        self.num_blocks = Pool_spec["num_blocks"]
+        self.pool = []
+        for i in range(self.num_blocks):
+            self.pool.append(Block(block_id=i))
+            self.free_blocks.append(self.pool[i])
+
+    def getBlock(self,block_id: int) -> Block:
+        return self.pool[block_id]
     
     def allocate(self):
         """

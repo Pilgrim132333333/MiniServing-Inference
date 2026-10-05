@@ -2,6 +2,8 @@ from transformers import AutoTokenizer
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 from miniserving.Backend.BackendFactory import BackendFactory
 from miniserving.Scheduler.Scheduler import Scheduler
+from miniserving.Observability.metrics import REQUEST_SERVER_TTFT,REQUEST_CLIENT_TTFT,REQUEST_TPOT,STEP_TIME,BATCH_SIZE,RUNNING_REQUESTS,WAITING_REQUESTS,KV_CACHE_USED,TOTAL_TOKENS,TOTAL_REQUESTS
+from miniserving.utils.logger import logger
 import uuid
 
 
@@ -13,7 +15,11 @@ class EngineCore:
         self.outputs = []
         self.scheduler = Scheduler()
         self.output = []
+        self.logger = logger.set_logger(__name__)
 
+        self.logger.info(f"EngineCore inited. model_name={model_name}, backend_type={backend_type},time = {time.time()}")
+
+        
 
     def add_sequence_group(self,prompt:str,sampling_params:dict = None) -> SequenceGroup:
         request_id = int(uuid.uuid4().hex,16)
@@ -30,6 +36,7 @@ class EngineCore:
             sequence_group.add_sequence(sequence)
     
         self.scheduler.add_sequence_group(sequence_group)
+        self.logger.info(f"Request:%d's sequence group inited.",request_id)
 
     def step(self):
         #从request_queue中取出一个request
@@ -39,9 +46,7 @@ class EngineCore:
             return None
         execute_output = self.backend.execute(requests)
     
-        
         self.scheduler.update(execute_output)
-        
         
         if self.scheduler.check_remaining():
             finished_sequences = self.scheduler.FINISHED_QUEUE
