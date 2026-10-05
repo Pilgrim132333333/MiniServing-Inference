@@ -53,7 +53,6 @@ class TorchBackend(BaseBackend):
         self._init_key_values(batch)
         seq = batch[0]
     
-
         #check if chunked
         if seq.get_chunk() is not None:
             input_tensors = torch.tensor([seq.get_chunk()[seq.get_chunk_index()]])
@@ -75,6 +74,7 @@ class TorchBackend(BaseBackend):
         return execute_output
     
     def _init_key_values(self,batch):
-        
-            
+        for seq in batch:
+            cache = KvCache(self.model_config)
+            seq.set_past_key_values(cache)
         return
