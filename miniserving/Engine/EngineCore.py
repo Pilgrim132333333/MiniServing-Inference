@@ -1,23 +1,27 @@
 from transformers import AutoTokenizer
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 from miniserving.Backend.BackendFactory import BackendFactory
-from miniserving.Scheduler.Scheduler import Scheduler
+from miniserving.Scheduler.scheduler import Scheduler
 from miniserving.Observability.metrics import REQUEST_SERVER_TTFT,REQUEST_CLIENT_TTFT,REQUEST_TPOT,STEP_TIME,BATCH_SIZE,RUNNING_REQUESTS,WAITING_REQUESTS,KV_CACHE_USED,TOTAL_TOKENS,TOTAL_REQUESTS
 from miniserving.utils.logger import logger
+import time
 import uuid
+import logging
+from miniserving.configs.EngineConfig import EngineConfig
+
 
 
 class EngineCore:
-    def __init__(self,model_name:str, backend_type:str = "torch"):
-        self.model_name = model_name
-        self.backend = BackendFactory(model_name).instance(backend_type)
+    def __init__(self,config:EngineConfig):
+        self.model_name = config.model
+        self.backend = BackendFactory(self.model_name).instance(config)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.outputs = []
-        self.scheduler = Scheduler()
+        self.scheduler = Scheduler(config)
         self.output = []
-        self.logger = logger.set_logger(__name__)
+        self.logger = logging.getLogger(__name__)
 
-        self.logger.info(f"EngineCore inited. model_name={model_name}, backend_type={backend_type},time = {time.time()}")
+        self.logger.info(f"EngineCore inited. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
 
         
 

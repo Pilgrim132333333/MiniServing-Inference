@@ -12,7 +12,7 @@ def setup_logger (name = "miniserving", level = logging.DEBUG):
     handler.setLevel(level)
 
     formatter = logging.Formatter(
-        fmt = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s"
+        fmt = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s",
         datefmt = "%H:%M:%S"
     )    
     

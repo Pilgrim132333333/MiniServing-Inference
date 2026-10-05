@@ -5,17 +5,21 @@ from collections import deque
 from transformers import DynamicCache
 import copy
 import time
+from miniserving.configs.SchedulerConfig import SchedulerConfig
+from miniserving.configs.EngineConfig import EngineConfig
 
 
 
 class Scheduler:
-    def __init__(self):
+    def __init__(self,config):
         self.WAITING_QUEUE = deque()
         self.RUNNING_QUEUE = deque()
         self.FINISHED_QUEUE = deque()
         self.FAILED_QUEUE = deque()
-        self.batch_size = 16
-        self.chunk_block = 16
+
+        self.config = config.scheduler_config
+        self.batch_size = self.config.batch_size
+        self.chunk_block = self.config.chunk_block
     
     def schedule(self):
         if not self.check_remaining():

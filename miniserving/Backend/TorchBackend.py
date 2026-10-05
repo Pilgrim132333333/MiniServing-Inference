@@ -4,11 +4,14 @@ from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
 from miniserving.Backend.ExecuteOutput import ExecuteOutput
 from miniserving.Backend.kvCache.KvCache import KvCache
 from miniserving.Backend.kvCache.BlockManager import BlockManager
+from miniserving.configs.BackendConfig import BackendConfig
+from miniserving.configs.BlockManagerConfig import BlockManagerConfig
+
 import torch
 class TorchBackend(BaseBackend):
-    def __init__(self,model_name:str):
-        super().__init__(model_name)
-        self.blockManager = BlockManager(self.model_config,self.block_size,KvCache(self.model_config))
+    def __init__(self,config:BackendConfig):
+        super().__init__(config)
+        self.blockManager = BlockManager(config.blockmanager_config)
 
     def load_model(self):
         model_name = self.model_name

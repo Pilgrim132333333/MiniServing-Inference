@@ -1,25 +1,30 @@
+from __future__ import annotations
+from miniserving.configs.BlockManagerConfig import BlockManagerConfig
 from typing import TYPE_CHECKING
 from miniserving.Backend.kvCache.Block import BlockPool,Block
 from transformers import Cache
-from miniserving.utils.logger import set_logger
+import logging
+import torch
 import math
 
 if TYPE_CHECKING:
     from miniserving.Engine.SequenceGroup import Sequence, SequenceGroup
 
 class BlockManager:
-    def __init__(self,model_config,block_size: int):
-        self.model_config = model_config
-        self.layer_num = model_config.n_layer
-        self.num_kv_heads = model_config.num_key_value_heads
-        self.head_dim = model_config.n_embd
-        self.dtype = model_config.torch_dtype
+    def __init__(self,config:BlockManagerConfig):
+
+        self.model_config = config
+        self.block_size = config.block_size
+        self.layer_num = config.n_layer
+        self.num_kv_heads = config.num_key_value_heads
+        self.head_dim = config.n_embd
+        self.dtype = getattr(torch, config.torch_dtype)
+        self.num_blocks = config.num_blocks
         self.byte_per_block = None
         self.block_table = {} # sequence_id-> list[Block_ID]
+        self.logger = logging.getLogger(__name__)
         self.k_tensor,self.v_tensor = self.init_real_memory() #shape[num_layer,num_blocks,num_kv_heads,head_dim]
-        self.pool = BlockPool({"block_size":block_size,"num_blocks":self.layer_num*self.num_kv_heads})
-
-        self.logger = logger.set_logger(__name__)
+        self.pool = BlockPool({"block_size":self.block_size,"num_blocks":self.num_blocks})
 
         
     def calculate_single_layer_single_token(self):
@@ -145,8 +150,8 @@ class BlockManager:
                 layout = None,
                 requires_grad = False)
 
-            except:
-                self.logger.error("KV 缓存初始化失败")
+            except Exception as e:
+                self.logger.error(f"KV 缓存初始化失败：{e}")
                 return  
 
             self.logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
