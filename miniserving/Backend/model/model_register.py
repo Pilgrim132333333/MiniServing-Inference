@@ -2,6 +2,7 @@ import torch
 from transformers import AutoModelForCausalLM
 from typing import TYPE_CHECKING
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
+import logging
 model_register = {}
 
 def register_model(model_name:str):
@@ -28,11 +29,18 @@ class DeepSeekV41Flash:
 @register_model("GPT2")
 class GPT2:
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.load_model()
         self.max_token = 20
         
     def load_model(self):
-        model = AutoModelForCausalLM.from_pretrained("gpt2")
+        self.logger.info("Loading GPT2 model...")
+        try:
+            model = AutoModelForCausalLM.from_pretrained("gpt2")
+        except Exception as e:
+            self.logger.error(f"Error loading GPT2 model: {e}")
+            raise e
+        self.logger.info("GPT2 model loaded successfully")
         self.model = model
         return
     

@@ -15,11 +15,19 @@ class EngineCore:
     def __init__(self,config:EngineConfig):
         self.model_name = config.model
         self.backend = BackendFactory(self.model_name).instance(config)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.outputs = []
         self.scheduler = Scheduler(config)
         self.output = []
         self.logger = logging.getLogger(__name__)
+
+        try:
+            self.logger.info(f"尝试初始化Tokenizer")
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+
+        except:
+            self.logger.error(f"EngineCore inited. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
+
+
 
         self.logger.info(f"EngineCore inited. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
 

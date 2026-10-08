@@ -6,20 +6,23 @@ from miniserving.Backend.kvCache.KvCache import KvCache
 from miniserving.Backend.kvCache.BlockManager import BlockManager
 from miniserving.configs.BackendConfig import BackendConfig
 from miniserving.configs.BlockManagerConfig import BlockManagerConfig
+import logging
 
 import torch
 class TorchBackend(BaseBackend):
     def __init__(self,config:BackendConfig):
         super().__init__(config)
+        self.logger = logging.getLogger(__name__)
         self.blockManager = BlockManager(config.blockmanager_config)
-
+        self.model = None
+        
     def load_model(self):
         model_name = self.model_name
         self.model = model_register[model_name]()
         return
     
     def execute(self,batch: list[Sequence]):
-        if not self.model:
+        if self.model is None:
             self.load_model()
         output_tokens = []
         for seq in batch:

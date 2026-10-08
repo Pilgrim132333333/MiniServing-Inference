@@ -1,4 +1,4 @@
-from transformers import Cache,CacheLayerMixin
+from transformers.cache_utils import Cache,CacheLayerMixin
 from miniserving.Backend.kvCache.BlockManager import BlockManager
 import torch
 from miniserving.utils import logger

@@ -137,6 +137,7 @@ class BlockManager:
         # kv_tensor 代表每个 layer 对应的所有缓存
         for layer in range(self.layer_num):
             try:
+                self.logger.info(f"Try to init the layer {layer} CUDA memory...")
                 k_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
                 dtype=self.dtype,
                 device = "cuda",
@@ -152,12 +153,12 @@ class BlockManager:
 
             except Exception as e:
                 self.logger.error(f"KV 缓存初始化失败：{e}")
-                return  
+                return
 
             self.logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
-            self.logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize()} bytes")
+            self.logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize} bytes")
             self.logger.info(f"Layer {layer} V 缓存初始化完成，大小为：{v_tensor.shape}，dtype为：{v_tensor.dtype},device:{v_tensor.device},dim:{v_tensor.dim()},总元素数：{v_tensor.numel()}")          
-            self.logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize()} bytes") 
+            self.logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize} bytes") 
             k_tensors.append(k_tensor)
             v_tensors.append(v_tensor)
         

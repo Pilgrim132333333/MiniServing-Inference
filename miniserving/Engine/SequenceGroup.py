@@ -1,6 +1,7 @@
 from enum import Enum
 import uuid
 from miniserving.Backend.kvCache.KvCache import KvCache
+import time
 
 class Sequence:
     def __init__(self,tokenIDs:list):
@@ -14,7 +15,6 @@ class Sequence:
         self.sequence_group = None
         self.max_tokens = self.sequence_group.max_tokens if self.sequence_group else 20
         self.is_finished = False
-        self.sequence_id = str(uuid.uuid4())
         self.chunk = None
         self.chunk_index = None
         self.first_schedule_time = None

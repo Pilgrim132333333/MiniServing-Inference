@@ -1,12 +1,12 @@
 
-from miniserving.Engine.EngineCore import EngineCore
+from miniserving.EntryPoints.LLM import LLM
 from miniserving.configs.EngineConfig import EngineConfig
 import time
 import pytest
 
 
 def test_generate():
-    llm = EngineCore(EngineConfig(model="GPT2"))
+    llm = LLM(EngineConfig(model="GPT2"))
     prompt = "Hello"
 
     start = time.time()

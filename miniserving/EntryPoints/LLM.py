@@ -6,12 +6,9 @@ class LLM:
         self.engineCore = EngineCore(engineConfig)
     
     #现在仅支持single prompt/ single request
-    def generate(self,request,sampling_params:dict = None):
-        if isinstance(request,Request):
-            prompt = request.get_prompt()
-            sampling_params = request.get_sampling_params()
-        else:
-            prompt = request
+    def generate(self,prompt:str,sampling_params:dict = None):
+        if prompt is None:
+            raise ValueError("prompt is empty")
 
         self._add_sequence_group(prompt,sampling_params)
         

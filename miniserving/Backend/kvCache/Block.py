@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+import logging
 
 @dataclass
 class Block:
@@ -11,14 +11,20 @@ class Block:
 
 class BlockPool:
     def __init__(self,Pool_spec:dict):
+        self.logger = logging.getLogger(__name__)
         self.Pool_spec = Pool_spec
         self.free_blocks = []
         self.block_size = Pool_spec["block_size"]
         self.num_blocks = Pool_spec["num_blocks"]
         self.pool = []
+
+        self.logger.info(f"BlockPool inited. block_size={self.block_size}, num_blocks={self.num_blocks}")
+        
         for i in range(self.num_blocks):
             self.pool.append(Block(block_id=i))
             self.free_blocks.append(self.pool[i])
+        
+        self.logger.info(f"BlockPool inited. num_blocks={self.num_blocks}")
 
     def getBlock(self,block_id: int) -> Block:
         return self.pool[block_id]
