@@ -36,7 +36,7 @@ class GPT2:
     def load_model(self):
         self.logger.info("Loading GPT2 model...")
         try:
-            model = AutoModelForCausalLM.from_pretrained("gpt2")
+            model = AutoModelForCausalLM.from_pretrained("/root/models/gpt2")
         except Exception as e:
             self.logger.error(f"Error loading GPT2 model: {e}")
             raise e

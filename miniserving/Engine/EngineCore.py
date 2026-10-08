@@ -25,7 +25,7 @@ class EngineCore:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
         except:
-            self.logger.error(f"EngineCore inited. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
+            self.logger.error(f"The tokenizer init fails. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
 
 
 

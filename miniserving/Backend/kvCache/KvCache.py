@@ -13,16 +13,17 @@ class PagedLayer(CacheLayerMixin):
         pass
 
 class KvCache(Cache):
-    def __init__(self,model_config,block_size: int,block_manager: BlockManager):
+    def __init__(self,kv_config,block_manager: BlockManager,sequenceID: str):
        
-        self.model_config = model_config
-        self.layer_num = model_config.n_layer
-        self.num_kv_heads = model_config.num_key_value_heads
-        self.head_dim = model_config.n_embd
-        self.dtype = model_config.torch_dtype
+        self.config = kv_config
+        self.layer_num = kv_config.n_layer
+        self.num_kv_heads = kv_config.num_key_value_heads
+        self.head_dim = kv_config.n_embd
+        self.dtype = kv_config.torch_dtype
         self.byte_per_block = None
         self.block_Manager = block_manager
-        self.init_all_layers()
+        self.block_size = kv_config.block_size
+        self.sequence_id = sequenceID
         super().__init__(layers=pagelayers)
         
         return

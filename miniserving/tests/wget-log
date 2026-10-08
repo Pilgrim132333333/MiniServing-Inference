@@ -1,0 +1,15 @@
+--2026-10-08 20:10:44--  https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct/resolve/main/config.json
+Resolving hf-mirror.com (hf-mirror.com)... 160.16.86.14
+Connecting to hf-mirror.com (hf-mirror.com)|160.16.86.14|:443... connected.
+HTTP request sent, awaiting response... 307 Temporary Redirect
+Location: /api/resolve-cache/models/Qwen/Qwen2.5-0.5B-Instruct/7ae557604adf67be50417f59c2c2f167def9a775/config.json?%2FQwen%2FQwen2.5-0.5B-Instruct%2Fresolve%2Fmain%2Fconfig.json=&etag=%220dbb161213629a23f0fc00ef286e6b1e366d180f%22 [following]
+--2026-10-08 20:10:45--  https://hf-mirror.com/api/resolve-cache/models/Qwen/Qwen2.5-0.5B-Instruct/7ae557604adf67be50417f59c2c2f167def9a775/config.json?%2FQwen%2FQwen2.5-0.5B-Instruct%2Fresolve%2Fmain%2Fconfig.json=&etag=%220dbb161213629a23f0fc00ef286e6b1e366d180f%22
+Reusing existing connection to hf-mirror.com:443.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [text/plain]
+Saving to: ‘/dev/null’
+
+     0K                                                         159M=0s
+
+2026-10-08 20:10:45 (159 MB/s) - ‘/dev/null’ saved [659]
+

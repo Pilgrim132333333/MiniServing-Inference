@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class EngineConfig:
-    model: str = "gpt2"
+    model: str = "/root/models/gpt2"
     backend_type: str = "torch"
 
     backend_config: BackendConfig = field(default_factory=BackendConfig)

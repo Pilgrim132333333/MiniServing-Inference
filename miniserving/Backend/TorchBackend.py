@@ -81,6 +81,6 @@ class TorchBackend(BaseBackend):
     
     def _init_key_values(self,batch):
         for seq in batch:
-            cache = KvCache(self.model_config)
+            cache = KvCache(self.config.blockmanager_config,self.blockManager,seq.get_sequence_id())
             seq.set_past_key_values(cache)
         return
