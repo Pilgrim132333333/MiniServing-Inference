@@ -1,11 +1,13 @@
 from __future__ import annotations
-from miniserving.configs.BlockManagerConfig import BlockManagerConfig
-from typing import TYPE_CHECKING
-from miniserving.Backend.kvCache.Block import BlockPool,Block
-from transformers import Cache
+
 import logging
-import torch
 import math
+from typing import TYPE_CHECKING
+
+import torch
+from miniserving.Backend.kvCache.Block import Block, BlockAllocater
+from miniserving.configs.BlockManagerConfig import BlockManagerConfig
+from transformers import Cache
 
 if TYPE_CHECKING:
     from miniserving.Engine.SequenceGroup import Sequence, SequenceGroup
@@ -23,8 +25,8 @@ class BlockManager:
         self.byte_per_block = None
         self.block_table = {} # sequence_id-> list[Block_ID]
         self.logger = logging.getLogger(__name__)
-        self.k_tensor,self.v_tensor = self.init_real_memory() #shape[num_layer,num_blocks,num_kv_heads,head_dim]
-        self.pool = BlockPool({"block_size":self.block_size,"num_blocks":self.num_blocks})
+        
+        self.allocater = BlockAllocater({"block_size":self.block_size,"num_blocks":self.num_blocks})
 
         
     def calculate_single_layer_single_token(self):
@@ -43,15 +45,14 @@ class BlockManager:
         """
         计算每个 block 的大小
         """   
-        self.byte_per_block = self.calculate_model_single_token()*block_size
-        return
+        self.byte_per_block = self.calculate_model_single_token()*self.block_size
     
     def caculate_num_blocks(self,seq: Sequence):
         """
        �算当前序列计算需要的 block 数
         """
         input_tokens = seq.get_input_tokens()
-        num_blocks = math.ceil(len(input_tokens) / block_size)
+        num_blocks = math.ceil(len(input_tokens) / self.block_size)
         return num_blocks
     
     def check_remaining_blocks(self,seq: Sequence):
@@ -85,15 +86,13 @@ class BlockManager:
         allocated = self.allocate_sequence(example_seq)
         for seq in seqGroup.sequences:
             self.update_allocated_table(allocated,seq)
-        return
 
     def update_allocated_table(self,allocated: list[int],sequence_id: str):
         """
         更新已分配 block 表
         """
         self.block_table[sequence_id] = allocated
-        return
-    
+        
     def get_allocated_blocks(self,sequence_id: str) -> list[int]:
         """
         获取当前序列已分配的 block id
@@ -104,10 +103,9 @@ class BlockManager:
     
     def calculate_slot(self,sequence_id: str):
         """
-        计算当前序列的 slot 数
+        计算当前序列的 slot 数,slot = [0,block_size-1]
         """
         allocated_blocks = self.get_allocated_blocks(sequence_id)
-        num_tokens = len(allocated_blocks) * self.block_size
         num_blocks = len(allocated_blocks)
         slot = num_blocks % ((num_blocks-1 )* self.block_size)
         return slot
@@ -130,40 +128,6 @@ class BlockManager:
                 return False
         return
         
-    def init_real_memory(self):
-        k_tensors = []
-        v_tensors = []
-        # 初始化 KV 缓存
-        # kv_tensor 代表每个 layer 对应的所有缓存
-        for layer in range(self.layer_num):
-            try:
-                self.logger.info(f"Try to init the layer {layer} CUDA memory...")
-                k_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
-                dtype=self.dtype,
-                device = "cuda",
-                out = None,
-                layout = None,
-                requires_grad = False)
-                v_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
-                dtype=self.dtype,
-                device = "cuda",
-                out = None,
-                layout = None,
-                requires_grad = False)
-
-            except Exception as e:
-                self.logger.error(f"KV 缓存初始化失败：{e}")
-                return
-
-            self.logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
-            self.logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize} bytes")
-            self.logger.info(f"Layer {layer} V 缓存初始化完成，大小为：{v_tensor.shape}，dtype为：{v_tensor.dtype},device:{v_tensor.device},dim:{v_tensor.dim()},总元素数：{v_tensor.numel()}")          
-            self.logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize} bytes") 
-            k_tensors.append(k_tensor)
-            v_tensors.append(v_tensor)
-        
-        return k_tensors,v_tensors
-    
     def next_token_block(self,sequence_id: str):
         """
         获取下一个token对应的block ID
@@ -250,8 +214,6 @@ class BlockManager:
         这里的key_states 和 value_states 都是 [num_kv_heads,1,head_dim]
         我们需要将它们复制到新block的缓存中
         """
-        new_view = self.pool[layer_index][next_block]
-        new_view[:filled].copy_(key_states[:,0,:])
-        new_view = self.pool[layer_index][next_block]
-        new_view[:filled].copy_(value_states[:,0,:])
+        
 
+        

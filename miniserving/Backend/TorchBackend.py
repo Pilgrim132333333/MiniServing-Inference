@@ -1,25 +1,27 @@
-from miniserving.Backend.model.model_register import model_register
-from miniserving.Backend.Basebackend import BaseBackend
-from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
-from miniserving.Backend.ExecuteOutput import ExecuteOutput
-from miniserving.Backend.kvCache.KvCache import KvCache
-from miniserving.Backend.kvCache.BlockManager import BlockManager
-from miniserving.configs.BackendConfig import BackendConfig
-from miniserving.configs.BlockManagerConfig import BlockManagerConfig
 import logging
 
 import torch
+from miniserving.Backend.Basebackend import BaseBackend
+from miniserving.Backend.ExecuteOutput import ExecuteOutput
+from miniserving.Backend.kvCache.BlockManager import BlockManager
+from miniserving.Backend.kvCache.KvCache import KvCache
+from miniserving.Backend.kvCache.KVCacheManager import KVCacheManager
+from miniserving.Backend.model.model_register import model_register
+from miniserving.configs.BackendConfig import BackendConfig
+from miniserving.Engine.SequenceGroup import Sequence
+
+
 class TorchBackend(BaseBackend):
     def __init__(self,config:BackendConfig):
         super().__init__(config)
         self.logger = logging.getLogger(__name__)
         self.blockManager = BlockManager(config.blockmanager_config)
+        self.KVCacheManager = KVCacheManager(config.kvcachemanager_config)
         self.model = None
-        
+
     def load_model(self):
         model_name = self.model_name
         self.model = model_register[model_name]()
-        return
     
     def execute(self,batch: list[Sequence]):
         if self.model is None:
@@ -71,6 +73,9 @@ class TorchBackend(BaseBackend):
         output = self.model.model(input_tensors,use_cache=True)
         out_put_logits = output.logits
         out_put_pasts = output.past_key_values
+        """
+        past_key_values 的形状： [batch_size, num_kv_heads, seq_len, head_dim]
+        """
 
         #这里先试用greedy decode
         next_token_ids = torch.argmax(out_put_logits[-1,:]).item()
@@ -83,4 +88,3 @@ class TorchBackend(BaseBackend):
         for seq in batch:
             cache = KvCache(self.config.blockmanager_config,self.blockManager,seq.get_sequence_id())
             seq.set_past_key_values(cache)
-        return

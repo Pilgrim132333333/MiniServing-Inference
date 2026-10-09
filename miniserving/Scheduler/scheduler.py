@@ -1,13 +1,14 @@
-from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence,SeqGroupStatus
-from miniserving.Backend.BackendFactory import BackendFactory
-from miniserving.Backend.ExecuteOutput import ExecuteOutput
-from collections import deque
-from transformers import DynamicCache
 import copy
 import time
-from miniserving.configs.SchedulerConfig import SchedulerConfig
-from miniserving.configs.EngineConfig import EngineConfig
+from collections import deque
 
+from transformers import DynamicCache
+
+from miniserving.Backend.BackendFactory import BackendFactory
+from miniserving.Backend.ExecuteOutput import ExecuteOutput
+from miniserving.configs.EngineConfig import EngineConfig
+from miniserving.configs.SchedulerConfig import SchedulerConfig
+from miniserving.Engine.SequenceGroup import SeqGroupStatus, Sequence, SequenceGroup
 
 
 class Scheduler:
@@ -65,6 +66,9 @@ class Scheduler:
     def update(self,execute_output:ExecuteOutput = None):
 
         seqs = execute_output.get_seqs()
+        """
+        past_key_values 的形状： [batch_size, num_kv_heads, seq_len, head_dim]
+        """
         past_key_values = execute_output.get_output_key_values()
         output_tokens = execute_output.get_output_tokens()
         seq = seqs[0]

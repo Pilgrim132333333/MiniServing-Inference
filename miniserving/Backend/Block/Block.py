@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+
 
 @dataclass
 class Block:
@@ -9,7 +10,7 @@ class Block:
     # next_free_block: Optional["Block"] = None
 
 
-class BlockPool:
+class BlockAllocater:
     def __init__(self,Pool_spec:dict):
         self.logger = logging.getLogger(__name__)
         self.Pool_spec = Pool_spec
@@ -48,4 +49,3 @@ class BlockPool:
         block.ref_count -= 1
         if block.ref_count == 0:
             self.free_blocks.append(block)
-        return
