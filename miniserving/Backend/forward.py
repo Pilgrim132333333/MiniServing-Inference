@@ -1,7 +1,8 @@
 
+import logging
+
 import torch
 import torch.nn as nn
-import logging
 
 
 class forward:
@@ -11,7 +12,6 @@ class forward:
         self.spe = self.model.transformer.wpe #position Embedding
         self.layers = self.model.transformer.h #layers
         self.num_layers = len(self.layers)
-        self.k_tensor,self.v_tensor = self.init_real_memory()
         self.logger = logging.getLogger(__name__)
 
 
@@ -25,7 +25,13 @@ class forward:
         self.vocab_size  = cfg.vocab_size # 50257 
         self.num_layers  = cfg.n_layer # 12   (跟 len(layers) 一致)
 
+        # === KV 缓存配置 ===
+        self.num_blocks = 4
+        self.block_size = 2
+        self.dtype = torch.float16
+
         self.block_table = []
+        self.k_tensor,self.v_tensor = self.init_real_memory()
 
     def forward(self,inputs):
         """
@@ -88,7 +94,7 @@ class forward:
 
             except Exception as e:
                 self.logger.error(f"KV 缓存初始化失败：{e}")
-                return
+                raise
 
             self.logger.info(f"Layer {layer} K 缓存初始化完成，大小为：{k_tensor.shape}，dtype为：{k_tensor.dtype},device:{k_tensor.device},dim:{k_tensor.dim()},总元素数：{k_tensor.numel()}")
             self.logger.info(f"Layer {layer} 每个 block 元素数为：{k_tensor.numel() / self.block_size}，总共的字节数：{k_tensor.numel() * k_tensor.dtype.itemsize} bytes")
@@ -96,3 +102,6 @@ class forward:
             self.logger.info(f"Layer {layer} 每个 block 元素数为：{v_tensor.numel() / self.block_size}，总共的字节数：{v_tensor.numel() * v_tensor.dtype.itemsize} bytes") 
             k_tensors.append(k_tensor)
             v_tensors.append(v_tensor)
+
+        return k_tensors, v_tensors
+        return k_tensors,v_tensors

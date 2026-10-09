@@ -29,4 +29,17 @@ def test_forward_map_qkv():
     assert qkv.shape == (3,3*768)
 
 def test_write_to_cache():
-    pass
+    token_ids = [1,2,3]
+    hidden_states = forward.embedding(token_ids)
+    qkv = forward.map_qkv(hidden_states)
+    k = qkv[..., 768:1536]
+    v = qkv[..., 1536:2304]
+    slot = 0
+    layer_idx = 0
+    forward.write_to_cache(k,v,slot,layer_idx)
+    k_cache = forward.k_tensor[layer_idx]
+    v_cache = forward.v_tensor[layer_idx]
+    assert k_cache.shape == (3,12,1,64)
+    assert v_cache.shape == (3,12,1,64)
+    assert k_cache[slot].shape == (12,64)
+    assert v_cache[slot].shape == (12,64)
