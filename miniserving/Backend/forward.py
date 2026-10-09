@@ -49,12 +49,21 @@ class forward:
         """
         return self.layers[0].attn.c_attn(hidden_states)
     
-    def write_to_cache(self,k_states,v_states,slot,blocks):
+    def write_to_cache(self, k_states, v_states, slot, layer_idx):
         """
         写入缓存
-        k_states and v_states : [batch_size,num_kv_heads,num_new_token,head_dim]
+        k_states and v_states : [batch_size, num_kv_heads, num_new_token, head_dim]
+        slot : [batch_size * num_new_token] 每个 token 在缓存中的位置 (block_id * block_size + offset)
+        layer_idx : layer index
         """
-        
+        k_cache = self.k_tensor[layer_idx]
+        v_cache = self.v_tensor[layer_idx]
+        k_flat = k_cache.view(-1, self.num_kv_heads, self.head_dim)
+        v_flat = v_cache.view(-1, self.num_kv_heads, self.head_dim)
+        k_new = k_states.permute(0, 2, 1, 3).reshape(-1, self.num_kv_heads, self.head_dim)
+        v_new = v_states.permute(0, 2, 1, 3).reshape(-1, self.num_kv_heads, self.head_dim)
+        k_flat[slot] = k_new
+        v_flat[slot] = v_new
 
     def init_real_memory(self):
         k_tensors = []

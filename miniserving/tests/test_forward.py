@@ -27,3 +27,6 @@ def test_forward_map_qkv():
     assert k.shape == (3,768)
     assert v.shape == (3,768)
     assert qkv.shape == (3,3*768)
+
+def test_write_to_cache():
+    pass
