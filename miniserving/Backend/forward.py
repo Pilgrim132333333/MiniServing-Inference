@@ -31,6 +31,8 @@ class forward:
         self.dtype = torch.float16
 
         self.block_table = []
+
+        #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
 
     def forward(self,inputs):
@@ -62,14 +64,24 @@ class forward:
         slot : [batch_size * num_new_token] 每个 token 在缓存中的位置 (block_id * block_size + offset)
         layer_idx : layer index
         """
+
+        #check the shape of k_states and v_states
+        if k_states.shape != v_states.shape:
+            raise ValueError("k_states and v_states must have the same shape")
+
         k_cache = self.k_tensor[layer_idx]
         v_cache = self.v_tensor[layer_idx]
         k_flat = k_cache.view(-1, self.num_kv_heads, self.head_dim)
         v_flat = v_cache.view(-1, self.num_kv_heads, self.head_dim)
+
+        """
+        这里的k_new和v_new将输入先交换位置，前两个是batch_size, num_new_token,后面的维度展开
+        """
         k_new = k_states.permute(0, 2, 1, 3).reshape(-1, self.num_kv_heads, self.head_dim)
         v_new = v_states.permute(0, 2, 1, 3).reshape(-1, self.num_kv_heads, self.head_dim)
-        k_flat[slot] = k_new
-        v_flat[slot] = v_new
+        for i in range(len(slot)):
+            k_flat[slot[i]] = k_new[i]
+            v_flat[slot[i]] = v_new[i]
 
     def init_real_memory(self):
         k_tensors = []

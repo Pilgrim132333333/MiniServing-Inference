@@ -1,5 +1,4 @@
-import pytest
-import torch
+
 from miniserving.Backend.forward import forward
 from transformers import AutoModelForCausalLM
 
@@ -32,14 +31,19 @@ def test_write_to_cache():
     token_ids = [1,2,3]
     hidden_states = forward.embedding(token_ids)
     qkv = forward.map_qkv(hidden_states)
-    k = qkv[..., 768:1536]
-    v = qkv[..., 1536:2304]
-    slot = 0
+    k = qkv[..., 768:1536] #3*768
+    v = qkv[..., 1536:2304] #3*768
+
+    k_states = k.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    v_states = v.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    slot = [0,1,2]
     layer_idx = 0
-    forward.write_to_cache(k,v,slot,layer_idx)
+    forward.write_to_cache(k_states,v_states,slot,layer_idx)
     k_cache = forward.k_tensor[layer_idx]
     v_cache = forward.v_tensor[layer_idx]
-    assert k_cache.shape == (3,12,1,64)
-    assert v_cache.shape == (3,12,1,64)
-    assert k_cache[slot].shape == (12,64)
-    assert v_cache[slot].shape == (12,64)
+    assert k_cache.shape == (4,2,12,64)
+    assert v_cache.shape == (4,2,12,64)
+    assert k_cache[slot[0]].shape == (2,12,64)
+    assert v_cache[slot[0]].shape == (2,12,64)
+
+
