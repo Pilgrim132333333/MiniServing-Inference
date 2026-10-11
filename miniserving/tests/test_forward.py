@@ -1,4 +1,5 @@
 
+import torch
 from miniserving.Backend.forward import forward
 from transformers import AutoModelForCausalLM
 
@@ -45,5 +46,24 @@ def test_write_to_cache():
     assert v_cache.shape == (4,2,12,64)
     assert k_cache[slot[0]].shape == (2,12,64)
     assert v_cache[slot[0]].shape == (2,12,64)
+
+    k_flat = k_cache.view(-1, forward.num_kv_heads, forward.head_dim)
+    v_flat = v_cache.view(-1, forward.num_kv_heads, forward.head_dim)
+    print(k_flat)
+    print(v_flat)
+
+    # cast dtype 的同时搬到与缓存相同的设备，避免 torch.equal 跨设备报错
+    k_exp = k_states.to(device=k_cache.device, dtype=forward.dtype) # [1,12,3,64]
+    v_exp = v_states.to(device=k_cache.device, dtype=forward.dtype)
+
+    for i, s in enumerate(slot):
+        # s = block_id * block_size + offset
+        assert torch.equal(k_flat[s], k_exp[0, :, i, :]), f"K slot {s} (token {i}) 写入不正确"
+        assert torch.equal(v_flat[s], v_exp[0, :, i, :]), f"V slot {s} (token {i}) 写入不正确"
+        # 交叉验证: block 视角与 slot 视角指向同一块内存
+        block_id, offset = s // forward.block_size, s % forward.block_size
+        assert torch.equal(k_cache[block_id, offset], k_flat[s])
+    # 未写入区域不应被误写: slot 3 之外的位置不应包含 token 数据
+    assert not torch.equal(k_flat[3], k_exp[0, :, 0, :])
 
 
