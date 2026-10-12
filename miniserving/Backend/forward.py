@@ -52,7 +52,7 @@ class forward:
     
     def map_qkv(self,hidden_states):
         """
-        hidden_states: [N,dim]
+        hidden_states: [N,hidden_dim] -> hidden_dim = num_heads*head_dim
         return: [N,3*dim]
         """
         return self.layers[0].attn.c_attn(hidden_states)
@@ -116,6 +116,7 @@ class forward:
         query = [num_head,1,head_dim]
         keys = [num_head,seq_len,head_dim]
         values = [num_head,seq_len,head_dim]
+        return: [num_heads,seq_q,head_dim]
         """
 
         # K^T
@@ -138,6 +139,40 @@ class forward:
         attn_output = torch.matmul(attn_weights,values)
 
         return attn_output
+
+    
+    def process_attn_output(self,attention_output,layer_index):
+        """
+        attention_output = [num_heads,seq_q,head_dim]
+        """
+        layer = self.layers[layer_index]
+        attention_output = attention_output.permute(1,0,2).view(-1,self.head_dim*self.num_heads) #合并head
+        attention_output = layer.attn.c_proj(attention_output) #将上一行强行合并的multi_head进行一次线性变换，融合。
+        
+        return attention_output
+    
+    def residual(self,hidden_states,residual):
+        """
+        这里需要接受两次residual：
+            1. hidden_states + atten_out -> [N,(num_heads*head_dim)] -> 矩阵里每个元素相加，不改变个数
+            2. h1 + mlp_out -> [N,(num_heads*head_dim)] -> 
+        """
+
+        return hidden_states + residual
+    
+    
+    def MLP(self,h1,layer_index):
+        """
+        一次MLP被我们理解成一次潜亏网络，对每个token独立地做一次升维->非线性激活->降维
+        """
+        layer = self.layers[layer_index]
+
+        #MLP
+        mlp_output = layer.mlp(h1)
+
+        return mlp_output
+
+        
 
 
     def init_real_memory(self):

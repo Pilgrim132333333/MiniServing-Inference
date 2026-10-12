@@ -124,4 +124,67 @@ def test_single_attention():
     assert attention_output.shape == (12,1,64)
     print(attention_output[0])
 
+def test_residual_connect():
+    """
+    残差连接测试：[N,768] + [1,768]
+    验证相加后的形状、首行等于二者相加、其余行未变。
+    """
+    N = 5
+    H = forward.dim   # 768
+    hidden_states = torch.randn(N, H)
+    attn_out = torch.randn(1, H)         # 模拟 attention 输出（仅 1 个 token）
+
+    # 残差：将 [1,768] 广播加到 hidden_states 的第一行
+    result = hidden_states.clone()
+    result[0:1] = result[0:1] + attn_out
+
+    # 1. 形状不变
+    assert result.shape == (N, H), f"shape mismatch: {result.shape}"
+    # 2. 首行 = 原 hidden_states[0] + attn_out
+    assert torch.allclose(result[0], hidden_states[0] + attn_out[0])
+    # 3. 其余行未受影响
+    assert torch.allclose(result[1:], hidden_states[1:])
+
+
+def test_process_attn_output():
+    token_ids = [1,2,3]
+    hidden_states = forward.embedding(token_ids)
+    qkv = forward.map_qkv(hidden_states)
+
+    k = qkv[..., 768:1536]   # 等价 qkv[..., 768:2*768]
+    v = qkv[..., 1536:2304]  # 等价 qkv[..., 2*768:]
+
+    k = k.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+    v = v.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+
+    input_id = [4]
+    input_hidden_states = forward.embedding(input_id)
+    input_qkv = forward.map_qkv(input_hidden_states)
+    q = input_qkv[..., 0:768]      # 等价 qkv[..., :768]
+    q = q.view(1,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+   
+    attention_output = forward.single_sequence_attention(q,k,v)
+
+    attention_output = forward.process_attn_output(attention_output,0)
+    assert attention_output.shape == (1,768)
+
+
+def test_MLP():
+    N = 5
+    H = forward.dim   # 768
+    hidden_states = torch.randn(N, H)
+    mlp_output = forward.MLP(hidden_states,0)
+
+    mlp = forward.layers[0].mlp
+    mlp_mid = mlp.c_fc(hidden_states)
+    mlp_mid = mlp.act(mlp_mid)
+    mlp_mid = mlp.c_proj(mlp_mid)
+
+
+    assert mlp_mid.shape == (N, H)
+    assert mlp_output.shape == (N, H)
+    assert torch.allclose(mlp_mid, mlp_output, atol=1e-5), \
+        "手动分步调用结果应与 HF 原版 mlp(...) 一致"    
+    
+
 
