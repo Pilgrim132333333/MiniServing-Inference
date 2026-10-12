@@ -30,7 +30,8 @@ class forward:
         self.block_size = 2
         self.dtype = torch.float16
 
-        self.block_table = []
+        # sequence_id -> [block_id, ...] 该序列占用的物理块列表
+        self.block_table = {}
 
         #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
@@ -82,6 +83,35 @@ class forward:
         for i in range(len(slot)):
             k_flat[slot[i]] = k_new[i]
             v_flat[slot[i]] = v_new[i]
+    
+    def find_past_kv(self,sequence_id,layer_Index,num_tokens: int  = None):
+        """
+        查找历史缓存
+        return k,v : [batch_size, num_kv_heads, seq_len, head_dim]
+        num_token:作为替代slot的参数，其在sequence没有填满block的时候起作用，可以让我们减少多余复制
+        """
+        block_list = self.block_table[sequence_id]
+        k_past= []
+        v_past = []
+        for block in block_list:
+            k_past.append(self.k_tensor[layer_Index][block])
+            v_past.append(self.v_tensor[layer_Index][block])
+        """
+        这里把两个list中的view合并，复制到一个新的缓存地址
+        """    
+        k = torch.cat(k_past,dim = 0)
+        v = torch.cat(v_past,dim = 0)
+
+        if num_tokens is not None:
+            k = k[:num_tokens]
+            v = v[:num_tokens]
+        
+        # [seq_len, H, D] -> [H, seq_len, D] -> [1, H, seq_len, D]
+        k = k.permute(1,0,2).unsqueeze(0)
+        v = v.permute(1,0,2).unsqueeze(0)
+        
+        return k,v
+
 
     def init_real_memory(self):
         k_tensors = []
@@ -116,4 +146,3 @@ class forward:
             v_tensors.append(v_tensor)
 
         return k_tensors, v_tensors
-        return k_tensors,v_tensors

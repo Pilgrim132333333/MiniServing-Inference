@@ -66,4 +66,41 @@ def test_write_to_cache():
     # 未写入区域不应被误写: slot 3 之外的位置不应包含 token 数据
     assert not torch.equal(k_flat[3], k_exp[0, :, 0, :])
 
+def test_find_past_key_value():
+    """
+    测试查找历史缓存
+    我们需要一个sequence来测试
+    """
+    sequence_id = "0"
+    token_first = [1,2,3]
+
+    first_hidden_states = forward.embedding(token_first)
+    
+    first_qkv = forward.map_qkv(first_hidden_states)
+
+    k = first_qkv[..., 768:1536] #3*768
+    v = first_qkv[..., 1536:2304] #3*768
+
+    #write the prior key value in the cache
+    k_state_first = k.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    v_state_first = v.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    slot = [0,1,2]
+    layer_idx = 0
+    forward.write_to_cache(k_state_first,v_state_first,slot,layer_idx)
+
+    #真实的update逻辑不应该和之前的类在同一块
+    forward.block_table[sequence_id] = [0,1]
+    k_past, v_past = forward.find_past_kv(sequence_id,layer_idx,3)
+
+    assert k_state_first.shape == k_past.shape
+    assert v_state_first.shape == v_past.shape
+
+    #Prove the data content
+    # 逐元素严格相等（先对齐 dtype/device）
+    k_exp = k_state_first.to(device=k_past.device, dtype=forward.dtype)
+    v_exp = v_state_first.to(device=v_past.device, dtype=forward.dtype)
+    assert torch.equal(k_past, k_exp), "K 数据与写入不一致"
+    assert torch.equal(v_past, v_exp), "V 数据与写入不一致"
+
+
 
