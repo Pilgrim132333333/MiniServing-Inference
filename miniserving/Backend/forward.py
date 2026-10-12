@@ -2,7 +2,6 @@
 import logging
 
 import torch
-import torch.nn as nn
 
 
 class forward:
@@ -40,7 +39,7 @@ class forward:
         """
         前向传播
         """
-        pass
+
     
     def embedding(self,input_id:list[int]):
         """
@@ -84,7 +83,7 @@ class forward:
             k_flat[slot[i]] = k_new[i]
             v_flat[slot[i]] = v_new[i]
     
-    def find_past_kv(self,sequence_id,layer_Index,num_tokens: int  = None):
+    def find_past_kv(self,sequence_id,layer_Index,num_tokens: int | None  = None):
         """
         查找历史缓存
         return k,v : [batch_size, num_kv_heads, seq_len, head_dim]
@@ -111,6 +110,34 @@ class forward:
         v = v.permute(1,0,2).unsqueeze(0)
         
         return k,v
+    
+    def single_sequence_attention(self,query,keys,values):
+        """
+        query = [num_head,1,head_dim]
+        keys = [num_head,seq_len,head_dim]
+        values = [num_head,seq_len,head_dim]
+        """
+
+        # K^T
+        k = keys.transpose(-1,-2)
+
+        #Q*K^T
+        #此时采用批量矩阵乘法，结果形状：[H,seq_q,seq_k]
+        qk = torch.matmul(query,k)
+
+        #缩放
+        scaling = self.head_dim**-0.5
+        qk = qk * scaling
+
+
+        #softmax
+        attn_weights = torch.softmax(qk,dim = -1) #让每个seq_q对每个seq_k的注意力权重归一化
+
+        #计算注意力输出
+        #[H,seq_q,seq_k] * [H,seq_k,head_dim] -> [H,seq_q,head_dim]
+        attn_output = torch.matmul(attn_weights,values)
+
+        return attn_output
 
 
     def init_real_memory(self):

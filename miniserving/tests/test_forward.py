@@ -102,5 +102,26 @@ def test_find_past_key_value():
     assert torch.equal(k_past, k_exp), "K 数据与写入不一致"
     assert torch.equal(v_past, v_exp), "V 数据与写入不一致"
 
+def test_single_attention():
+    token_ids = [1,2,3]
+    hidden_states = forward.embedding(token_ids)
+    qkv = forward.map_qkv(hidden_states)
+
+    k = qkv[..., 768:1536]   # 等价 qkv[..., 768:2*768]
+    v = qkv[..., 1536:2304]  # 等价 qkv[..., 2*768:]
+
+    k = k.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+    v = v.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+
+    input_id = [4]
+    input_hidden_states = forward.embedding(input_id)
+    input_qkv = forward.map_qkv(input_hidden_states)
+    q = input_qkv[..., 0:768]      # 等价 qkv[..., :768]
+    q = q.view(1,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+   
+    attention_output = forward.single_sequence_attention(q,k,v)
+    
+    assert attention_output.shape == (12,1,64)
+    print(attention_output[0])
 
 
