@@ -7,39 +7,36 @@ model = AutoModelForCausalLM.from_pretrained("/root/models/gpt2")
 
 forward = forward(model)
 
-def test_forward_forward():
-    pass
-
 def test_forward_embedding():
-    token_ids = [1,2,3]
-    embedding = forward.embedding(token_ids)
+    token_ids = [[1,2,3]]                 # [batch=1, seq=3]
+    embedding = forward._embedding(token_ids)
     print(embedding)
-    assert embedding.shape == (3,768)
+    assert embedding.shape == (1, 3, 768)
 
 def test_forward_map_qkv():
-    token_ids = [1,2,3]
-    hidden_states = forward.embedding(token_ids)
-    qkv = forward.map_qkv(hidden_states)
+    token_ids = [[1,2,3]]
+    hidden_states = forward._embedding(token_ids)   # [1, 3, 768]
+    qkv = forward._map_qkv(hidden_states, 0)         # [1, 3, 2304]
     q = qkv[..., 0:768]      # 等价 qkv[..., :768]
     k = qkv[..., 768:1536]   # 等价 qkv[..., 768:2*768]
     v = qkv[..., 1536:2304]  # 等价 qkv[..., 2*768:]
-    assert q.shape == (3,768)
-    assert k.shape == (3,768)
-    assert v.shape == (3,768)
-    assert qkv.shape == (3,3*768)
+    assert q.shape == (1, 3, 768)
+    assert k.shape == (1, 3, 768)
+    assert v.shape == (1, 3, 768)
+    assert qkv.shape == (1, 3, 3*768)
 
 def test_write_to_cache():
-    token_ids = [1,2,3]
-    hidden_states = forward.embedding(token_ids)
-    qkv = forward.map_qkv(hidden_states)
-    k = qkv[..., 768:1536] #3*768
-    v = qkv[..., 1536:2304] #3*768
+    token_ids = [[1,2,3]]
+    hidden_states = forward._embedding(token_ids)   # [1, 3, 768]
+    qkv = forward._map_qkv(hidden_states, 0)
+    k = qkv[..., 768:1536]   # [1, 3, 768]
+    v = qkv[..., 1536:2304]  # [1, 3, 768]
 
-    k_states = k.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
-    v_states = v.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    k_states = k.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,3,64]
+    v_states = v.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)
     slot = [0,1,2]
     layer_idx = 0
-    forward.write_to_cache(k_states,v_states,slot,layer_idx)
+    forward._write_to_cache(k_states, v_states, slot, layer_idx)
     k_cache = forward.k_tensor[layer_idx]
     v_cache = forward.v_tensor[layer_idx]
     assert k_cache.shape == (4,2,12,64)
@@ -69,60 +66,52 @@ def test_write_to_cache():
 def test_find_past_key_value():
     """
     测试查找历史缓存
-    我们需要一个sequence来测试
     """
     sequence_id = "0"
-    token_first = [1,2,3]
+    token_first = [[1,2,3]]
 
-    first_hidden_states = forward.embedding(token_first)
-    
-    first_qkv = forward.map_qkv(first_hidden_states)
+    first_hidden_states = forward._embedding(token_first)   # [1,3,768]
+    first_qkv = forward._map_qkv(first_hidden_states, 0)    # [1,3,2304]
 
-    k = first_qkv[..., 768:1536] #3*768
-    v = first_qkv[..., 1536:2304] #3*768
+    k = first_qkv[..., 768:1536]   # [1,3,768]
+    v = first_qkv[..., 1536:2304]  # [1,3,768]
 
-    #write the prior key value in the cache
-    k_state_first = k.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
-    v_state_first = v.view(1,3,forward.num_kv_heads,forward.head_dim).permute(0,2,1,3)
+    k_state_first = k.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,3,64]
+    v_state_first = v.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)
     slot = [0,1,2]
     layer_idx = 0
-    forward.write_to_cache(k_state_first,v_state_first,slot,layer_idx)
+    forward._write_to_cache(k_state_first, v_state_first, slot, layer_idx)
 
-    #真实的update逻辑不应该和之前的类在同一块
     forward.block_table[sequence_id] = [0,1]
-    k_past, v_past = forward.find_past_kv(sequence_id,layer_idx,3)
+    k_past, v_past = forward._find_past_kv(sequence_id, layer_idx, 3)
 
     assert k_state_first.shape == k_past.shape
     assert v_state_first.shape == v_past.shape
 
-    #Prove the data content
-    # 逐元素严格相等（先对齐 dtype/device）
     k_exp = k_state_first.to(device=k_past.device, dtype=forward.dtype)
     v_exp = v_state_first.to(device=v_past.device, dtype=forward.dtype)
     assert torch.equal(k_past, k_exp), "K 数据与写入不一致"
     assert torch.equal(v_past, v_exp), "V 数据与写入不一致"
 
 def test_single_attention():
-    token_ids = [1,2,3]
-    hidden_states = forward.embedding(token_ids)
-    qkv = forward.map_qkv(hidden_states)
+    token_ids = [[1,2,3]]
+    hidden_states = forward._embedding(token_ids)   # [1,3,768]
+    qkv = forward._map_qkv(hidden_states, 0)        # [1,3,2304]
 
-    k = qkv[..., 768:1536]   # 等价 qkv[..., 768:2*768]
-    v = qkv[..., 1536:2304]  # 等价 qkv[..., 2*768:]
+    k = qkv[..., 768:1536]   # [1,3,768]
+    v = qkv[..., 1536:2304]  # [1,3,768]
 
-    k = k.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
-    v = v.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+    k = k.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,3,64]
+    v = v.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)
 
-    input_id = [4]
-    input_hidden_states = forward.embedding(input_id)
-    input_qkv = forward.map_qkv(input_hidden_states)
-    q = input_qkv[..., 0:768]      # 等价 qkv[..., :768]
-    q = q.view(1,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
-   
-    attention_output = forward.single_sequence_attention(q,k,v)
-    
-    assert attention_output.shape == (12,1,64)
-    print(attention_output[0])
+    input_id = [[4]]
+    input_hidden_states = forward._embedding(input_id)   # [1,1,768]
+    input_qkv = forward._map_qkv(input_hidden_states, 0) # [1,1,2304]
+    q = input_qkv[..., 0:768]                             # [1,1,768]
+    q = q.view(1, 1, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,1,64]
+
+    attention_output = forward._attention(q, k, v)
+    assert attention_output.shape == (1, 12, 1, 64)   # [batch, H, seq_q, D]
 
 def test_residual_connect():
     """
@@ -147,44 +136,46 @@ def test_residual_connect():
 
 
 def test_process_attn_output():
-    token_ids = [1,2,3]
-    hidden_states = forward.embedding(token_ids)
-    qkv = forward.map_qkv(hidden_states)
+    token_ids = [[1,2,3]]
+    hidden_states = forward._embedding(token_ids)   # [1,3,768]
+    qkv = forward._map_qkv(hidden_states, 0)        # [1,3,2304]
 
-    k = qkv[..., 768:1536]   # 等价 qkv[..., 768:2*768]
-    v = qkv[..., 1536:2304]  # 等价 qkv[..., 2*768:]
+    k = qkv[..., 768:1536]   # [1,3,768]
+    v = qkv[..., 1536:2304]  # [1,3,768]
 
-    k = k.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
-    v = v.view(3,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
+    k = k.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,3,64]
+    v = v.view(1, 3, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)
 
-    input_id = [4]
-    input_hidden_states = forward.embedding(input_id)
-    input_qkv = forward.map_qkv(input_hidden_states)
-    q = input_qkv[..., 0:768]      # 等价 qkv[..., :768]
-    q = q.view(1,forward.num_kv_heads,forward.head_dim).permute(1,0,2)
-   
-    attention_output = forward.single_sequence_attention(q,k,v)
+    input_id = [[4]]
+    input_hidden_states = forward._embedding(input_id)
+    input_qkv = forward._map_qkv(input_hidden_states, 0)
+    q = input_qkv[..., 0:768]
+    q = q.view(1, 1, forward.num_kv_heads, forward.head_dim).permute(0, 2, 1, 3)  # [1,12,1,64]
 
-    attention_output = forward.process_attn_output(attention_output,0)
-    assert attention_output.shape == (1,768)
+    attention_output = forward._attention(q, k, v)   # [1,12,1,64]
+    attention_output = forward._process_attn_output(attention_output, 0)
+    assert attention_output.shape == (1, 768)
 
 
 def test_MLP():
     N = 5
     H = forward.dim   # 768
-    hidden_states = torch.randn(N, H)
-    mlp_output = forward.MLP(hidden_states,0)
+    hidden_states = torch.randn(1, N, H, device=forward.device, dtype=forward.dtype)   # [batch, seq, 768]
+    mlp_output = forward._MLP(hidden_states, 0)
 
     mlp = forward.layers[0].mlp
-    mlp_mid = mlp.c_fc(hidden_states)
+    mlp_mid = mlp.c_fc(hidden_states)      # [1, N, 3072]
     mlp_mid = mlp.act(mlp_mid)
-    mlp_mid = mlp.c_proj(mlp_mid)
+    mlp_mid = mlp.c_proj(mlp_mid)          # [1, N, 768]
 
-
-    assert mlp_mid.shape == (N, H)
-    assert mlp_output.shape == (N, H)
-    assert torch.allclose(mlp_mid, mlp_output, atol=1e-5), \
+    assert mlp_mid.shape == (1, N, H)
+    assert mlp_output.shape == (1, N, H)
+    assert torch.allclose(mlp_mid, mlp_output, atol=1e-3), \
         "手动分步调用结果应与 HF 原版 mlp(...) 一致"    
     
 
 
+def test_forward():
+    token_ids = [[1,2,3]]              # [batch=1, seq=3]
+    output = forward.forward(token_ids,"0")   # forward.__call__ -> forward.forward
+    assert output.shape == (1, 3, 768)

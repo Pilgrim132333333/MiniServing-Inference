@@ -6,7 +6,8 @@ import torch
 
 class forward:
     def __init__(self,model):
-        self.model = model
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = model.to(self.device).half()   # 模型与缓存同设备同 dtype(FP16)
         self.wte = self.model.transformer.wte #Embedding vector
         self.spe = self.model.transformer.wpe #position Embedding
         self.layers = self.model.transformer.h #layers
@@ -32,32 +33,79 @@ class forward:
         # sequence_id -> [block_id, ...] 该序列占用的物理块列表
         self.block_table = {}
 
+        self.slot = [[0,1,2]]
+
         #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
 
-    def forward(self,inputs):
+    def forward(self, inputs, sequence_id: str):
         """
         前向传播
+        inputs: [batch_size, list[input_id]]
+        ln1 -> attn -> residual -> ln2 -> mlp -> residual -> output
         """
+        hidden_states = self._embedding(inputs)   # [batch, seq_len, 768]
+        batch, seq_len = hidden_states.shape[0], hidden_states.shape[1]
 
-    
-    def embedding(self,input_id:list[int]):
+        # 为该 sequence 分配 block 和 slot（简化版：连续分配）
+        if sequence_id not in self.block_table:
+            num_blocks_needed = (seq_len + self.block_size - 1) // self.block_size
+            self.block_table[sequence_id] = list(range(num_blocks_needed))
+        slot = list(range(seq_len))   # [0, 1, 2, ..., seq_len-1]
+
+        for i in range(self.num_layers):
+            layer = self.layers[i]
+
+            # === Attention 子层 ===
+            residual = hidden_states                       # 备份原始输入做残差
+            attn_input = layer.ln_1(hidden_states)         # LN1（不覆盖 hidden_states）
+
+            qkv = layer.attn.c_attn(attn_input)             # [batch, seq, 2304]
+            q, k, v = qkv.split(self.dim, dim=-1)           # 各 [batch, seq, 768]
+
+            # 拆头: [batch, seq, 768] -> [batch, seq, H, D] -> [batch, H, seq, D]
+            q = q.view(batch, seq_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+            k = k.view(batch, seq_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+            v = v.view(batch, seq_len, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+
+            # 写 KV 到缓存
+            self._write_to_cache(k, v, slot, i)
+
+            # 读历史 KV（prefill 时即刚写入的全部）
+            k_all, v_all = self._find_past_kv(sequence_id, i, num_tokens=seq_len)
+            if k_all is None:
+                k_all, v_all = k, v   # 兜底：直接用当前 K/V
+
+            # attention（prefill: q 和 k 长度相同，内部自动加 causal mask）
+            attn_out = self._attention(q, k_all, v_all)          # [batch, H, seq, D]
+            attn_out = self._process_attn_output(attn_out, i)     # [batch, seq, 768]
+            hidden_states = residual + attn_out                   # 残差 1
+
+            # === MLP 子层 ===
+            residual = hidden_states
+            mlp_input = layer.ln_2(hidden_states)                # LN2
+            mlp_out = self._MLP(mlp_input, i)
+            hidden_states = residual + mlp_out                    # 残差 2
+
+        return hidden_states
+
+    def _embedding(self,inputs:list[list[int]]):
         """
         获取token的embedding
-        return hidden state [len(input_id),hidden_dim]
+        return hidden state [batch_size,len(input_id),hidden_dim]
         """
-        input_id = torch.tensor(input_id)
+        input_id = torch.tensor(inputs, device=self.device)
 
         return self.wte(input_id) 
     
-    def map_qkv(self,hidden_states):
+    def _map_qkv(self,hidden_states,layer_index: int):
         """
-        hidden_states: [N,hidden_dim] -> hidden_dim = num_heads*head_dim
-        return: [N,3*dim]
+        hidden_states: [batch_size,len(input_id),num_heads*head_dim,hidden_dim] -> hidden_dim = num_heads*head_dim
+        return: [batch_size,len(input_id),num_heads,3*dim]
         """
-        return self.layers[0].attn.c_attn(hidden_states)
+        return self.layers[layer_index].attn.c_attn(hidden_states)
     
-    def write_to_cache(self, k_states, v_states, slot, layer_idx):
+    def _write_to_cache(self, k_states, v_states, slot, layer_idx):
         """
         写入缓存
         k_states and v_states : [batch_size, num_kv_heads, num_new_token, head_dim]
@@ -83,13 +131,21 @@ class forward:
             k_flat[slot[i]] = k_new[i]
             v_flat[slot[i]] = v_new[i]
     
-    def find_past_kv(self,sequence_id,layer_Index,num_tokens: int | None  = None):
+    def _find_past_kv(self,sequence_id,layer_Index,num_tokens: int | None  = None):
         """
         查找历史缓存
-        return k,v : [batch_size, num_kv_heads, seq_len, head_dim]
+        return k,v : [batch_size,num_kv_heads, seq_len, head_dim]
         num_token:作为替代slot的参数，其在sequence没有填满block的时候起作用，可以让我们减少多余复制
         """
         block_list = self.block_table[sequence_id]
+
+        if block_list == []:
+            return None,None
+
+
+        """
+        这里把两个list中的view合并，复制到一个新的缓存地址
+        """    
         k_past= []
         v_past = []
         for block in block_list:
@@ -105,19 +161,23 @@ class forward:
             k = k[:num_tokens]
             v = v[:num_tokens]
         
-        # [seq_len, H, D] -> [H, seq_len, D] -> [1, H, seq_len, D]
+        # [seq_len, H, D] -> [H, seq_len, D]  -> [1, H, seq_len, D]
         k = k.permute(1,0,2).unsqueeze(0)
         v = v.permute(1,0,2).unsqueeze(0)
         
         return k,v
     
-    def single_sequence_attention(self,query,keys,values):
+    def _attention(self,query,keys,values):
         """
-        query = [num_head,1,head_dim]
-        keys = [num_head,seq_len,head_dim]
-        values = [num_head,seq_len,head_dim]
-        return: [num_heads,seq_q,head_dim]
+        query = [batch_size,num_head,1,head_dim]
+        keys = [batch_size,num_kv_heads,seq_len,head_dim]
+        values = [batch_size,num_kv_heads,num_head,seq_len,head_dim]
+        return: [batch_size,num_head,seq_q,head_dim]
         """
+
+        seq_q = query.shape[2]
+        seq_len = keys.shape[2]
+        is_prefill = seq_len == seq_q
 
         # K^T
         k = keys.transpose(-1,-2)
@@ -130,28 +190,32 @@ class forward:
         scaling = self.head_dim**-0.5
         qk = qk * scaling
 
+        #prefill的时候加causal mask：query token i 不能看 key token： j>i
+        if is_prefill:
+            mask = torch.tril(torch.ones(seq_q, seq_len, dtype=torch. bool , device=qk.device))
+            qk = qk.masked_fill(~mask, float ( '-inf' ))
 
         #softmax
         attn_weights = torch.softmax(qk,dim = -1) #让每个seq_q对每个seq_k的注意力权重归一化
 
         #计算注意力输出
-        #[H,seq_q,seq_k] * [H,seq_k,head_dim] -> [H,seq_q,head_dim]
+        #[batch_size,H,seq_q,seq_k] * [batch_size,H,seq_k,head_dim] -> [batch_size,H,seq_q,head_dim]
         attn_output = torch.matmul(attn_weights,values)
 
         return attn_output
 
     
-    def process_attn_output(self,attention_output,layer_index):
+    def _process_attn_output(self,attention_output,layer_index):
         """
-        attention_output = [num_heads,seq_q,head_dim]
+        attention_output = [batch_size,num_head,,seq_q,head_dim]
         """
         layer = self.layers[layer_index]
-        attention_output = attention_output.permute(1,0,2).view(-1,self.head_dim*self.num_heads) #合并head
+        attention_output = attention_output.permute(0,2,1,3).reshape(-1,self.dim) #合并head
         attention_output = layer.attn.c_proj(attention_output) #将上一行强行合并的multi_head进行一次线性变换，融合。
         
         return attention_output
     
-    def residual(self,hidden_states,residual):
+    def _residual(self,hidden_states,residual):
         """
         这里需要接受两次residual：
             1. hidden_states + atten_out -> [N,(num_heads*head_dim)] -> 矩阵里每个元素相加，不改变个数
@@ -161,19 +225,17 @@ class forward:
         return hidden_states + residual
     
     
-    def MLP(self,h1,layer_index):
+    def _MLP(self,h1,layer_index):
         """
         一次MLP被我们理解成一次潜亏网络，对每个token独立地做一次升维->非线性激活->降维
         """
         layer = self.layers[layer_index]
 
         #MLP
-        mlp_output = layer.mlp(h1)
+        mlp_output = layer.mlp(h1) #[N,768]
 
         return mlp_output
-
-        
-
+    
 
     def init_real_memory(self):
         k_tensors = []
@@ -185,13 +247,13 @@ class forward:
                 self.logger.info(f"Try to init the layer {layer} CUDA memory...")
                 k_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
                 dtype=self.dtype,
-                device = "cuda",
+                device = self.device,
                 out = None,
                 layout = None,
                 requires_grad = False)
                 v_tensor = torch.empty((self.num_blocks,self.block_size,self.num_kv_heads,self.head_dim), 
                 dtype=self.dtype,
-                device = "cuda",
+                device = self.device,
                 out = None,
                 layout = None,
                 requires_grad = False)
