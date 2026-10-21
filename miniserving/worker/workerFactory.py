@@ -1,13 +1,10 @@
-import torch
-from miniserving.Backend.TorchBackend import TorchBackend
-from miniserving.Backend.LlamaBackend import LlamaBackend
-from miniserving.Backend.Basebackend import BaseBackend
+from miniserving.worker.gpuworker import TorchBackend
+from miniserving.worker.baseworker import BaseBackend
 from miniserving.configs.BackendConfig import BackendConfig
 from miniserving.configs.EngineConfig import EngineConfig
 
 
-
-class BackendFactory:
+class WorkerFactory:
     def __init__(self,model_name:str):
         self.impl = None
         self.model_name = model_name
@@ -18,8 +15,6 @@ class BackendFactory:
 
         if backend_type == "torch":
             return TorchBackend(backend_config)
-        elif backend_type == "llama":
-            return LlamaBackend(backend_config)
         else:
             raise ValueError(f"Unknown backend type: {backend_type}")
 

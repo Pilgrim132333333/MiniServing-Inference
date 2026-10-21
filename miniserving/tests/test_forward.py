@@ -1,11 +1,11 @@
 
 import torch
-from miniserving.Backend.forward import forward
+from miniserving.ModelRunner.GPT2ForCausalLM import GPT2ForCausalLM
 from transformers import AutoModelForCausalLM
 
 model = AutoModelForCausalLM.from_pretrained("/root/models/gpt2")
 
-forward = forward(model)
+forward = GPT2ForCausalLM(model)
 
 def test_forward_embedding():
     token_ids = [[1,2,3]]                 # [batch=1, seq=3]

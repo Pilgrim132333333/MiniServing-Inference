@@ -2,7 +2,7 @@ import logging
 import time
 import uuid
 
-from miniserving.Backend.BackendFactory import BackendFactory
+from miniserving.worker.workerFactory import WorkerFactory
 from miniserving.configs.EngineConfig import EngineConfig
 from miniserving.Engine.SequenceGroup import Sequence, SequenceGroup
 from miniserving.Observability.metrics import (
@@ -24,7 +24,7 @@ from transformers import AutoTokenizer
 class EngineCore:
     def __init__(self,config:EngineConfig):
         self.model_name = config.model
-        self.backend = BackendFactory(self.model_name).instance(config)
+        self.backend = WorkerFactory(self.model_name).instance(config)
         self.outputs = []
         self.scheduler = Scheduler(config)
         self.output = []

@@ -4,8 +4,7 @@ from collections import deque
 
 from transformers import DynamicCache
 
-from miniserving.Backend.BackendFactory import BackendFactory
-from miniserving.Backend.ExecuteOutput import ExecuteOutput
+from miniserving.worker.ExecuteOutput import ExecuteOutput
 from miniserving.configs.EngineConfig import EngineConfig
 from miniserving.configs.SchedulerConfig import SchedulerConfig
 from miniserving.Engine.SequenceGroup import SeqGroupStatus, Sequence, SequenceGroup

@@ -1,16 +1,17 @@
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
-from miniserving.Backend.Basebackend import BaseBackend
-from miniserving.Backend.BackendFactory import BackendFactory
+from miniserving.worker.baseworker import BaseBackend
+from miniserving.worker.workerFactory import WorkerFactory
 from miniserving.EntryPoints.Request import Request
-from miniserving.Scheduler.Scheduler import Scheduler
+from miniserving.Scheduler.scheduler import Scheduler
+from miniserving.configs.EngineConfig import engineConfig
 from transformers import AutoTokenizer
 from collections import deque
 import asyncio
 class AsyncEngineCore:
     def __init__(self,model_name:str):
         self.model_name = model_name
-        self.backend = BackendFactory(model_name).instance()
-        self.scheduler = Scheduler()
+        self.backend = WorkerFactory(model_name).instance(engineConfig)
+        self.scheduler = Scheduler(engineConfig)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.message_queue = {} #request_id -> Future
             

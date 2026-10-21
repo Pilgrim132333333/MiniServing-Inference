@@ -1,10 +1,9 @@
 import logging
 
 import torch
-from miniserving.Backend.Basebackend import BaseBackend
-from miniserving.Backend.ExecuteOutput import ExecuteOutput
-from miniserving.Backend.kvCache.BlockManager import BlockManager
-from miniserving.Backend.kvCache.KvCache import KvCache
+from miniserving.worker.baseworker import BaseBackend
+from miniserving.worker.ExecuteOutput import ExecuteOutput
+from miniserving.Backend.Block.BlockManager import BlockManager
 from miniserving.Backend.kvCache.KVCacheManager import KVCacheManager
 from miniserving.Backend.model.model_register import model_register
 from miniserving.configs.BackendConfig import BackendConfig
@@ -58,7 +57,6 @@ class TorchBackend(BaseBackend):
         return execute_output
         
     def execute_prefill(self,batch: list[Sequence]):
-        self._init_key_values(batch)
         seq = batch[0]
     
         #check if chunked
@@ -83,8 +81,3 @@ class TorchBackend(BaseBackend):
 
         execute_output = ExecuteOutput(batch,[next_token_ids],[out_put_pasts])
         return execute_output
-    
-    def _init_key_values(self,batch):
-        for seq in batch:
-            cache = KvCache(self.config.blockmanager_config,self.blockManager,seq.get_sequence_id())
-            seq.set_past_key_values(cache)

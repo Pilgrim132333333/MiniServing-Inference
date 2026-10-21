@@ -1,10 +1,9 @@
-
 import logging
 
 import torch
 
 
-class forward:
+class GPT2ForCausalLM:
     def __init__(self,model):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = model.to(self.device).half()   # 模型与缓存同设备同 dtype(FP16)
