@@ -29,28 +29,19 @@ class GPT2ForCausalLM:
         self.block_size = 2
         self.dtype = torch.float16
 
-        # sequence_id -> [block_id, ...] 该序列占用的物理块列表
-        self.block_table = {}
-
-        self.slot = [[0,1,2]]
-
         #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
 
-    def forward(self, inputs, sequence_id: str):
+    def forward(self, inputs, block_table: list[int], slot: list[int]):
         """
         前向传播
         inputs: [batch_size, list[input_id]]
+        block_table / slot: 由 Scheduler 侧 BlockManager 记账后传入的索引元数据,
+        模型层不记账,只按 slot 读写物理 KV 池
         ln1 -> attn -> residual -> ln2 -> mlp -> residual -> output
         """
         hidden_states = self._embedding(inputs)   # [batch, seq_len, 768]
         batch, seq_len = hidden_states.shape[0], hidden_states.shape[1]
-
-        # 为该 sequence 分配 block 和 slot（简化版：连续分配）
-        if sequence_id not in self.block_table:
-            num_blocks_needed = (seq_len + self.block_size - 1) // self.block_size
-            self.block_table[sequence_id] = list(range(num_blocks_needed))
-        slot = list(range(seq_len))   # [0, 1, 2, ..., seq_len-1]
 
         for i in range(self.num_layers):
             layer = self.layers[i]
@@ -71,7 +62,7 @@ class GPT2ForCausalLM:
             self._write_to_cache(k, v, slot, i)
 
             # 读历史 KV（prefill 时即刚写入的全部）
-            k_all, v_all = self._find_past_kv(sequence_id, i, num_tokens=seq_len)
+            k_all, v_all = self._find_past_kv(block_table, i, num_tokens=seq_len)
             if k_all is None:
                 k_all, v_all = k, v   # 兜底：直接用当前 K/V
 
@@ -130,13 +121,13 @@ class GPT2ForCausalLM:
             k_flat[slot[i]] = k_new[i]
             v_flat[slot[i]] = v_new[i]
     
-    def _find_past_kv(self,sequence_id,layer_Index,num_tokens: int | None  = None):
+    def _find_past_kv(self,block_table: list[int],layer_Index,num_tokens: int | None  = None):
         """
         查找历史缓存
         return k,v : [batch_size,num_kv_heads, seq_len, head_dim]
         num_token:作为替代slot的参数，其在sequence没有填满block的时候起作用，可以让我们减少多余复制
         """
-        block_list = self.block_table[sequence_id]
+        block_list = block_table
 
         if block_list == []:
             return None,None

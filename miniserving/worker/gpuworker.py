@@ -1,30 +1,33 @@
 import logging
 
 import torch
-from miniserving.worker.baseworker import BaseBackend
+from miniserving.worker.baseworker import BaseWorker
 from miniserving.worker.ExecuteOutput import ExecuteOutput
-from miniserving.Backend.Block.BlockManager import BlockManager
 from miniserving.Backend.kvCache.KVCacheManager import KVCacheManager
 from miniserving.Backend.model.model_register import model_register
-from miniserving.configs.BackendConfig import BackendConfig
+from miniserving.configs.WorkerConfig import WorkerConfig
 from miniserving.Engine.SequenceGroup import Sequence
+from miniserving.ModelRunner.ModelRunner import ModelRunner
+from miniserving.Scheduler.ScheduleOutput import ScheduleOutput
 
 
-class TorchBackend(BaseBackend):
-    def __init__(self,config:BackendConfig):
+class GPUWorker(BaseWorker):
+    def __init__(self,config:WorkerConfig):
         super().__init__(config)
         self.logger = logging.getLogger(__name__)
-        self.blockManager = BlockManager(config.blockmanager_config)
         self.KVCacheManager = KVCacheManager(config.kvcachemanager_config)
         self.model = None
+        self.modelRunner = None
 
     def load_model(self):
         model_name = self.model_name
         self.model = model_register[model_name]()
+        self.modelRunner = ModelRunner(self.model)
     
-    def execute(self,batch: list[Sequence]):
+    def execute(self,schedule_output: ScheduleOutput):
         if self.model is None:
             self.load_model()
+        batch = schedule_output.seqs
         output_tokens = []
         for seq in batch:
             output_tokens.extend(seq.get_output_tokens())

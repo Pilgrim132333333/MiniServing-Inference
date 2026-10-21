@@ -85,7 +85,7 @@ class Sequence:
 
     @property
     def is_prefilling(self):
-        return self.computed_tokens < self.input_tokenIDs
+        return self.computed_tokens < len(self.input_tokenIDs)
     
     def update_computed_tokens(self,num_tokens:int):
         self.computed_tokens += num_tokens

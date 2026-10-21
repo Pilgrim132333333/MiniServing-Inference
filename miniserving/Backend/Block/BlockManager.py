@@ -60,7 +60,7 @@ class BlockManager:
         检查当前序列是否有足够的 block
         """
         num_blocks = self.caculate_num_blocks(seq)
-        return num_blocks <= len(self.pool.free_blocks)
+        return num_blocks <= len(self.allocater.free_blocks)
     
     def allocate_sequence(self,seq: Sequence):
         """
@@ -74,8 +74,8 @@ class BlockManager:
             allocated = []
             num_blocks = self.caculate_num_blocks(seq)
             for i in range(num_blocks):
-                allocated.append(self.pool.allocate().block_id)
-            self.update_allocated_table(allocated,seq.request_id)
+                allocated.append(self.allocater.allocate())
+            self.update_allocated_table(allocated,seq.get_sequence_id())
             return allocated
         
     def allocate_sequence_group(self,seqGroup: SequenceGroup):
@@ -101,14 +101,41 @@ class BlockManager:
             return []
         return self.block_table[sequence_id]
     
-    def calculate_slot(self,sequence_id: str):
+    def calculate_slot(self,sequence_id: str,position: int):
         """
-        计算当前序列的 slot 数,slot = [0,block_size-1]
+        计算第 position 个 token 的物理 slot: block_id * block_size + offset
         """
-        allocated_blocks = self.get_allocated_blocks(sequence_id)
-        num_blocks = len(allocated_blocks)
-        slot = num_blocks % ((num_blocks-1 )* self.block_size)
-        return slot
+        block_id = self.block_table[sequence_id][position // self.block_size]
+        return block_id * self.block_size + position % self.block_size
+
+    def ensure_blocks(self,sequence_id: str,total_tokens: int) -> list[int]:
+        """
+        确保序列的 block 数量能容纳 total_tokens 个 token,不足则从池中分配
+        先查旧账再补差额:已分配的 block 跨 step 持续保留
+        """
+        needed = math.ceil(total_tokens / self.block_size)
+        blocks = self.block_table.get(sequence_id, [])
+        num_new = needed - len(blocks)
+        if num_new > len(self.allocater.free_blocks):
+            raise ValueError("Free block pool is not enough to allocate block for current sequence")
+        for _ in range(num_new):
+            blocks.append(self.allocater.allocate())
+        if num_new > 0:
+            self.block_table[sequence_id] = blocks
+        return blocks
+
+    def get_slot_mapping(self,sequence_id: str,start_pos: int,num_new_tokens: int) -> list[int]:
+        """
+        计算本步新 token(起始位置 start_pos)逐 token 的写入 slot 列表
+        """
+        return [self.calculate_slot(sequence_id, start_pos + i) for i in range(num_new_tokens)]
+
+    def free_sequence(self,sequence_id: str):
+        """
+        序列结束,归还其占用的所有 block
+        """
+        for block_id in self.block_table.pop(sequence_id, []):
+            self.allocater.free_block(self.allocater.getBlock(block_id))
     
     def check_if_allocate_block(self,sequence_id: str,num_tokens: int):
         """
@@ -122,7 +149,7 @@ class BlockManager:
         elif slot>self.block_size:
             raise ValueError(f"Slot Error: {slot}")
         else:
-            if self.pool.getBlock(last_block_id).ref_count>0:
+            if self.allocater.getBlock(last_block_id).ref_count>0:
                 return True
             else:
                 return False
@@ -133,7 +160,7 @@ class BlockManager:
         获取下一个token对应的block ID
         """
         if self.check_if_allocate_block(sequence_id):
-            return self.pool.allocate().block_id
+            return self.allocater.allocate()
         else:
             return self.block_table[sequence_id][-1]
     

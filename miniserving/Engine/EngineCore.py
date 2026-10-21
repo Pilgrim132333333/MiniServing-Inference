@@ -24,7 +24,7 @@ from transformers import AutoTokenizer
 class EngineCore:
     def __init__(self,config:EngineConfig):
         self.model_name = config.model
-        self.backend = WorkerFactory(self.model_name).instance(config)
+        self.worker = WorkerFactory(self.model_name).instance(config)
         self.outputs = []
         self.scheduler = Scheduler(config)
         self.output = []
@@ -35,11 +35,11 @@ class EngineCore:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
         except:
-            self.logger.error(f"The tokenizer init fails. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
+            self.logger.error(f"The tokenizer init fails. model_name={self.model_name}, worker_type={config.worker_type},time = {time.time()}")
 
 
 
-        self.logger.info(f"EngineCore inited. model_name={self.model_name}, backend_type={config.backend_type},time = {time.time()}")
+        self.logger.info(f"EngineCore inited. model_name={self.model_name}, worker_type={config.worker_type},time = {time.time()}")
 
         
 
@@ -61,19 +61,18 @@ class EngineCore:
         self.logger.info(f"Request:%d's sequence group inited.",request_id)
 
     def step(self):
-        #从request_queue中取出一个request
-        requests = self.scheduler.schedule()
+        #从 Scheduler 拿到本步调度输出(含 block_table/slot_mapping 账本增量)
+        schedule_output = self.scheduler.schedule()
 
-        if requests is None:
+        if schedule_output is None:
             return None
-        execute_output = self.backend.execute(requests)
+        execute_output = self.worker.execute(schedule_output)
     
         self.scheduler.update(execute_output)
         
         if self.scheduler.check_remaining():
             finished_sequences = self.scheduler.FINISHED_QUEUE
             for sequence_group in finished_sequences:
-                print(sequence_group+"ada")
                 for sequence in sequence_group.get_sequences():
                     output_tokens = sequence.get_output_tokens()
                     output_prompt = self.tokenizer.decode(output_tokens)

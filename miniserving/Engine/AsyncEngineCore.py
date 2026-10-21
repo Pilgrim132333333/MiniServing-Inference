@@ -1,5 +1,5 @@
 from miniserving.Engine.SequenceGroup import SequenceGroup,Sequence
-from miniserving.worker.baseworker import BaseBackend
+from miniserving.worker.baseworker import BaseWorker
 from miniserving.worker.workerFactory import WorkerFactory
 from miniserving.EntryPoints.Request import Request
 from miniserving.Scheduler.scheduler import Scheduler

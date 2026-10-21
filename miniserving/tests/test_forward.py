@@ -82,8 +82,8 @@ def test_find_past_key_value():
     layer_idx = 0
     forward._write_to_cache(k_state_first, v_state_first, slot, layer_idx)
 
-    forward.block_table[sequence_id] = [0,1]
-    k_past, v_past = forward._find_past_kv(sequence_id, layer_idx, 3)
+    block_table = [0,1]
+    k_past, v_past = forward._find_past_kv(block_table, layer_idx, 3)
 
     assert k_state_first.shape == k_past.shape
     assert v_state_first.shape == v_past.shape
@@ -177,5 +177,5 @@ def test_MLP():
 
 def test_forward():
     token_ids = [[1,2,3]]              # [batch=1, seq=3]
-    output = forward.forward(token_ids,"0")   # forward.__call__ -> forward.forward
+    output = forward.forward(token_ids, [0,1], [0,1,2])   # 外部账本: block_table + slot_mapping
     assert output.shape == (1, 3, 768)
