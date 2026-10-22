@@ -79,7 +79,7 @@ class GPT2ForCausalLM:
             mlp_out = self._MLP(mlp_input, i)
             hidden_states = residual + mlp_out                    # 残差 2
 
-        logits = self.model.lm_head(hidden_states)
+        logits = self.model.lm_head(self.model.transformer.ln_f(hidden_states))
     
         return logits
 
