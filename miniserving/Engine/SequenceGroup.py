@@ -16,7 +16,7 @@ class Sequence:
         self.max_tokens = self.sequence_group.max_tokens if self.sequence_group else 20
         self.is_finished = False
         self.chunk = None
-        self.chunk_index = None
+        self.chunk_index = 0
         self.first_schedule_time = None
         self.first_output_token_time = None
         

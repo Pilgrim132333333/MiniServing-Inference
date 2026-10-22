@@ -22,44 +22,45 @@ class GPUWorker(BaseWorker):
     def load_model(self):
         model_name = self.model_name
         self.model = model_register[model_name]()
-        self.modelRunner = ModelRunner(self.model)
+        self.modelRunner = ModelRunner(self.model,self.config.blockmanager_config)
     
     def execute(self,schedule_output: ScheduleOutput):
         if self.model is None:
             self.load_model()
         batch = schedule_output.seqs
+        block_table = schedule_output.block_table
+        slot_mapping = schedule_output.slot_mapping
         output_tokens = []
         for seq in batch:
             output_tokens.extend(seq.get_output_tokens())
+            seq_blocks = block_table[seq.get_sequence_id()]
             if output_tokens  == []:
-                execute_output = self.execute_prefill(batch)
+                execute_output = self.execute_prefill(batch,seq_blocks,slot_mapping)   
             else:
-                execute_output = self.execute_decode(batch)
+                execute_output = self.execute_decode(batch,seq_blocks,slot_mapping)
         return execute_output
 
-    def execute_decode(self,batch: list[Sequence]):   
+    def execute_decode(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int]):   
         next_token_ids = []
-        output_key_values = []
         for seq in batch:
             input_tokens = [[seq.get_output_tokens()[-1]]]
-            past_key_values = seq.get_past_key_values()
             input_tensors = torch.tensor(input_tokens)
 
             #一次decode
-            output = self.model.model(input_tensors,use_cache=True,past_key_values=past_key_values)
-            out_put_logits = output.logits
-            out_put_pasts = output.past_key_values
-            output_key_values.append(out_put_pasts)
-
+            # output:[batch, seq_len, vocab_size]
+            output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping)
+            
             #这里先试用greedy decode
-            next_token_ids = []
-            for logit in out_put_logits:
+            for logit in output:
                 next_token_ids.append(torch.argmax(logit[-1,:]).item())
-        execute_output = ExecuteOutput(batch,next_token_ids,output_key_values)
+        execute_output = ExecuteOutput(batch,next_token_ids)
 
         return execute_output
         
-    def execute_prefill(self,batch: list[Sequence]):
+    def execute_prefill(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int]):
+        """
+        执行prefill阶段
+        """
         seq = batch[0]
     
         #check if chunked
@@ -71,16 +72,16 @@ class GPUWorker(BaseWorker):
             input_tensors = torch.tensor([input_tokens])
             
         #一次prefill
-        output = self.model.model(input_tensors,use_cache=True)
-        out_put_logits = output.logits
-        out_put_pasts = output.past_key_values
+        #output = [batch, seq_len, vocab_size]
+        output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping)
+        
         """
         past_key_values 的形状： [batch_size, num_kv_heads, seq_len, head_dim]
         """
 
         #这里先试用greedy decode
-        next_token_ids = torch.argmax(out_put_logits[-1,:]).item()
+        next_token_ids = torch.argmax(output[-1,-1:]).item()
             
 
-        execute_output = ExecuteOutput(batch,[next_token_ids],[out_put_pasts])
+        execute_output = ExecuteOutput(batch,[next_token_ids])
         return execute_output

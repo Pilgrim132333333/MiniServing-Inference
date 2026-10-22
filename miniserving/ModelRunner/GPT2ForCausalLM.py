@@ -4,9 +4,9 @@ import torch
 
 
 class GPT2ForCausalLM:
-    def __init__(self,model):
+    def __init__(self,model,config):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = model.to(self.device).half()   # 模型与缓存同设备同 dtype(FP16)
+        self.model = model.model.to(self.device).half()   # 模型与缓存同设备同 dtype(FP16)
         self.wte = self.model.transformer.wte #Embedding vector
         self.spe = self.model.transformer.wpe #position Embedding
         self.layers = self.model.transformer.h #layers
@@ -25,8 +25,8 @@ class GPT2ForCausalLM:
         self.num_layers  = cfg.n_layer # 12   (跟 len(layers) 一致)
 
         # === KV 缓存配置 ===
-        self.num_blocks = 4
-        self.block_size = 2
+        self.num_blocks = config.num_blocks
+        self.block_size = config.block_size
         self.dtype = torch.float16
 
         #shape: [num_blocks,block_size,num_head,head_dim]
@@ -39,6 +39,7 @@ class GPT2ForCausalLM:
         block_table / slot: 由 Scheduler 侧 BlockManager 记账后传入的索引元数据,
         模型层不记账,只按 slot 读写物理 KV 池
         ln1 -> attn -> residual -> ln2 -> mlp -> residual -> output
+        output: [batch, seq_len, 768]
         """
         hidden_states = self._embedding(inputs)   # [batch, seq_len, 768]
         batch, seq_len = hidden_states.shape[0], hidden_states.shape[1]
@@ -77,7 +78,9 @@ class GPT2ForCausalLM:
             mlp_out = self._MLP(mlp_input, i)
             hidden_states = residual + mlp_out                    # 残差 2
 
-        return hidden_states
+        logits = self.model.lm_head(hidden_states)
+    
+        return logits
 
     def _embedding(self,inputs:list[list[int]]):
         """
@@ -121,15 +124,15 @@ class GPT2ForCausalLM:
             k_flat[slot[i]] = k_new[i]
             v_flat[slot[i]] = v_new[i]
     
-    def _find_past_kv(self,block_table: list[int],layer_Index,num_tokens: int | None  = None):
+    def _find_past_kv(self,seq_blocks: list[int],layer_Index: int,num_tokens: int | None  = None):
         """
         查找历史缓存
         return k,v : [batch_size,num_kv_heads, seq_len, head_dim]
         num_token:作为替代slot的参数，其在sequence没有填满block的时候起作用，可以让我们减少多余复制
         """
-        block_list = block_table
+        block_list = seq_blocks
 
-        if block_list == []:
+        if block_list == {}:
             return None,None
 
 

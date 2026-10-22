@@ -55,6 +55,7 @@ class EngineCore:
         seqs = [Sequence(tokenIDs[i]) for i in range(n)]
         sequence_group = SequenceGroup(request_id,prompt,[],sampling_params,eos_token_id)
         for sequence in seqs:
+            sequence.set_eos_token_id(eos_token_id)
             sequence_group.add_sequence(sequence)
     
         self.scheduler.add_sequence_group(sequence_group)
@@ -70,14 +71,14 @@ class EngineCore:
     
         self.scheduler.update(execute_output)
         
-        if self.scheduler.check_remaining():
-            finished_sequences = self.scheduler.FINISHED_QUEUE
-            for sequence_group in finished_sequences:
-                for sequence in sequence_group.get_sequences():
-                    output_tokens = sequence.get_output_tokens()
-                    output_prompt = self.tokenizer.decode(output_tokens)
-                    sequence.set_output_prompt(output_prompt)
-                    self.output.append(output_prompt)
+        finished_sequences = self.scheduler.FINISHED_QUEUE
+        while finished_sequences:
+            sequence_group = finished_sequences.popleft()
+            for sequence in sequence_group.get_sequences():
+                output_tokens = sequence.get_output_tokens()
+                output_prompt = self.tokenizer.decode(output_tokens)
+                sequence.set_output_prompt(output_prompt)
+                self.output.append(output_prompt)
     
     def is_running(self) -> bool:
         remaining = self.scheduler.check_remaining()

@@ -35,7 +35,6 @@ class Scheduler:
             #最后一个输出 token 的位置 = len(input)+len(output)-1,其 KV 尚未计算
             sequence_group = self.RUNNING_QUEUE[0]
             for seq in sequence_group.get_sequences():
-                batch.append(seq)
                 seq.set_first_schedule_time(time.time())
                 start_pos = len(seq.get_input_tokens()) + len(seq.get_output_tokens()) - 1
                 self._fill_schedule_output(output, seq, start_pos, 1, [seq.get_output_tokens()[-1]])
@@ -53,7 +52,6 @@ class Scheduler:
             sequence_group.get_sequences()[0].set_chunk(chunk)
 
         for seq in sequence_group.get_sequences():
-            batch.append(seq)
             seq.set_first_schedule_time(time.time())
             if chunk is not None:
                 start_pos = seq.get_chunk_index() * self.chunk_block
@@ -73,6 +71,7 @@ class Scheduler:
         output.block_table[sequence_id] = self.block_manager.get_allocated_blocks(sequence_id)
         output.slot_mapping.extend(self.block_manager.get_slot_mapping(sequence_id, start_pos, num_new))
         output.token_ids.extend(token_ids)
+        output.seqs.append(seq)
 
         
     def add_sequence_group(self,sequence_group:SequenceGroup):
@@ -92,21 +91,17 @@ class Scheduler:
     def update(self,execute_output:ExecuteOutput = None):
 
         seqs = execute_output.get_seqs()
-        """
-        past_key_values 的形状： [batch_size, num_kv_heads, seq_len, head_dim]
-        """
-        past_key_values = execute_output.get_output_key_values()
         output_tokens = execute_output.get_output_tokens()
         seq = seqs[0]
 
         #prefill update
         if seq.is_prefilling:
-            if execute_output.chunk_index is None:
+            if seq.get_chunk() is None:
                 for seq in seqs:
                     seq.update_computed_tokens(len(seq.get_input_tokens()))
                     seq.set_output_tokens([output_tokens[0]])
-                    new_key_values = self._extract_seq_KV(0,past_key_values[0])
-                    seq.set_past_key_values(new_key_values)
+
+
             else:
                 chunk_size = self.chunk_block
                 chunk_index = seq.get_chunk_index()
@@ -114,33 +109,27 @@ class Scheduler:
                     for seq in seqs:
                         seq.update_computed_tokens(len(seq.get_input_tokens())-chunk_size*chunk_index)
                         seq.set_output_tokens([output_tokens[0]])
-                        new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])
-                        seq.set_past_key_values(new_key_values)
                 else: #此时仍然处于prefill阶段
                     for seq in seqs:
                         seq.update_computed_tokens((chunk_index+1)*chunk_size)
-                        new_key_values = self._extract_seq_KV(chunk_index,past_key_values[chunk_index])
-                        seq.set_past_key_values(new_key_values)
         
         #decode update
         else:
             for seq in seqs:
                 seq.add_output_token(output_tokens[seqs.index(seq)])
-                new_key_values = past_key_values[seqs.index(seq)]
-                seq.set_past_key_values(new_key_values)
 
                 if self._is_finished(seq) == True:
                     sequence_group = seq.get_sequence_group()
                     check = True
-                    for seq in sequence_group.get_sequences():
-                        if not self._is_finished(seq):
+                    for member in sequence_group.get_sequences():
+                        if not self._is_finished(member):
                             check = False
-                    if check:
+                    if check and sequence_group.get_status() != SeqGroupStatus.FINISHED:
                         sequence_group.set_status(SeqGroupStatus.FINISHED)
                         self.RUNNING_QUEUE.remove(sequence_group)
                         self.FINISHED_QUEUE.append(sequence_group)
-                        for seq in sequence_group.get_sequences():
-                            self.block_manager.free_sequence(seq.get_sequence_id())
+                        for member in sequence_group.get_sequences():
+                            self.block_manager.free_sequence(member.get_sequence_id())
         return
 
         
@@ -156,19 +145,6 @@ class Scheduler:
             return sequence.check_finished()
         else:
             return False
-
-    def _extract_seq_KV(self,batchIndex:int,past_key_values):
-        new_cache = DynamicCache()
-        # transformers>=5.x: DynamicCache 内部是 layers 列表, 每层是 DynamicLayer
-        # past_key_values.layers[layer_idx].keys/.values shape: [B, heads, seq, dim]
-        for layer_idx, layer in enumerate(past_key_values.layers):
-            K = layer.keys
-            V = layer.values
-            K_b = K[batchIndex:batchIndex+1]
-            V_b = V[batchIndex:batchIndex+1]
-            new_cache.update(K_b, V_b, layer_idx)
-        
-        return new_cache
     
     def remove_sequence_group(self,sequence_group:SequenceGroup):
         self.FINISHED_QUEUE.remove(sequence_group)
