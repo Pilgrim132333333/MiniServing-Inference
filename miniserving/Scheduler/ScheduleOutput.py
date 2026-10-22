@@ -12,3 +12,4 @@ class ScheduleOutput:
     token_ids: list = field(default_factory=list)     # 本步逐 token 的输入 id(按 batch 顺序展开)
     block_table: dict = field(default_factory=dict)   # sequence_id -> list[block_id]
     slot_mapping: list = field(default_factory=list)  # 逐 token 写入槽位 block_id * block_size + offset
+    start_positions: list = field(default_factory=list) # 每个sequence这step开始的位置（已经计算的token数量）

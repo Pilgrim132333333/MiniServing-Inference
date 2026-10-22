@@ -30,17 +30,19 @@ class GPUWorker(BaseWorker):
         batch = schedule_output.seqs
         block_table = schedule_output.block_table
         slot_mapping = schedule_output.slot_mapping
+        start_positions = schedule_output.start_positions
         output_tokens = []
-        for seq in batch:
+        for idx,seq in enumerate(batch):
             output_tokens.extend(seq.get_output_tokens())
             seq_blocks = block_table[seq.get_sequence_id()]
+            start_pos = start_positions[idx]
             if output_tokens  == []:
-                execute_output = self.execute_prefill(batch,seq_blocks,slot_mapping)   
+                execute_output = self.execute_prefill(batch,seq_blocks,slot_mapping,start_pos)   
             else:
-                execute_output = self.execute_decode(batch,seq_blocks,slot_mapping)
+                execute_output = self.execute_decode(batch,seq_blocks,slot_mapping,start_pos)
         return execute_output
 
-    def execute_decode(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int]):   
+    def execute_decode(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int],start_pos: int):   
         next_token_ids = []
         for seq in batch:
             input_tokens = [[seq.get_output_tokens()[-1]]]
@@ -48,7 +50,7 @@ class GPUWorker(BaseWorker):
 
             #一次decode
             # output:[batch, seq_len, vocab_size]
-            output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping)
+            output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping,start_pos)
             
             #这里先试用greedy decode
             for logit in output:
@@ -57,7 +59,7 @@ class GPUWorker(BaseWorker):
 
         return execute_output
         
-    def execute_prefill(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int]):
+    def execute_prefill(self,batch: list[Sequence],seq_blocks: list[int],slot_mapping: list[int],start_pos: int):
         """
         执行prefill阶段
         """
@@ -73,7 +75,7 @@ class GPUWorker(BaseWorker):
             
         #一次prefill
         #output = [batch, seq_len, vocab_size]
-        output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping)
+        output = self.modelRunner.forward(input_tensors,seq_blocks,slot_mapping,start_pos)
         
         """
         past_key_values 的形状： [batch_size, num_kv_heads, seq_len, head_dim]

@@ -8,5 +8,5 @@ class ModelRunner:
         else:
             self.model = GPT2ForCausalLM(model,config)
 
-    def forward(self,inputs,block_table: dict[str,list[int]],slot: list[int]):
-        return self.model.forward(inputs, block_table, slot)
+    def forward(self,inputs,block_table: dict[str,list[int]],slot: list[int],start_pos: int = 0):
+        return self.model.forward(inputs, block_table, slot, start_pos)

@@ -32,16 +32,17 @@ class GPT2ForCausalLM:
         #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
 
-    def forward(self, inputs, block_table: list[int], slot: list[int]):
+    def forward(self, inputs, block_table: list[int], slot: list[int], start_pos: int = 0):
         """
         前向传播
         inputs: [batch_size, list[input_id]]
         block_table / slot: 由 Scheduler 侧 BlockManager 记账后传入的索引元数据,
         模型层不记账,只按 slot 读写物理 KV 池
+        start_pos: 本步输入在完整序列中的起始位置,决定位置编码偏移与 KV 读回长度
         ln1 -> attn -> residual -> ln2 -> mlp -> residual -> output
         output: [batch, seq_len, 768]
         """
-        hidden_states = self._embedding(inputs)   # [batch, seq_len, 768]
+        hidden_states = self._embedding(inputs, start_pos)   # [batch, seq_len, 768]
         batch, seq_len = hidden_states.shape[0], hidden_states.shape[1]
 
         for i in range(self.num_layers):
@@ -62,8 +63,8 @@ class GPT2ForCausalLM:
             # 写 KV 到缓存
             self._write_to_cache(k, v, slot, i)
 
-            # 读历史 KV（prefill 时即刚写入的全部）
-            k_all, v_all = self._find_past_kv(block_table, i, num_tokens=seq_len)
+            # 读历史 KV（覆盖 start_pos + 本步新 token 的完整上下文）
+            k_all, v_all = self._find_past_kv(block_table, i, num_tokens=start_pos + seq_len)
             if k_all is None:
                 k_all, v_all = k, v   # 兜底：直接用当前 K/V
 
@@ -82,14 +83,18 @@ class GPT2ForCausalLM:
     
         return logits
 
-    def _embedding(self,inputs:list[list[int]]):
+    def _embedding(self,inputs:list[list[int]],start_pos:int = 0):
         """
-        获取token的embedding
+        获取token的embedding并叠加位置编码
         return hidden state [batch_size,len(input_id),hidden_dim]
         """
-        input_id = torch.tensor(inputs, device=self.device)
+        input_id = torch.as_tensor(inputs, device=self.device)
+        seq_len = input_id.shape[-1]
 
-        return self.wte(input_id) 
+        #位置编码
+        #position是一个1dimension的tensor = [start_pos,start_pos+1,...,start_pos+seq_pos+seq_len-1]
+        positions = torch.arange(start_pos, start_pos + seq_len, device=self.device)
+        return self.wte(input_id) + self.spe(positions).unsqueeze(0)
     
     def _map_qkv(self,hidden_states,layer_index: int):
         """

@@ -71,6 +71,7 @@ class Scheduler:
         output.block_table[sequence_id] = self.block_manager.get_allocated_blocks(sequence_id)
         output.slot_mapping.extend(self.block_manager.get_slot_mapping(sequence_id, start_pos, num_new))
         output.token_ids.extend(token_ids)
+        output.start_positions.append(start_pos)
         output.seqs.append(seq)
 
         
