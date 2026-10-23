@@ -31,7 +31,8 @@ __global__ void reshape_and_cache_kernel(
     //从显存读出本token的目标slot，注意每个thread都要读取一次
     const int64_t slot = slot_mapping[token_idx];
 
-    if(slot >= cache_total_slots) return;
+    //slot为-1表示padding token（Scheduler约定），必须跳过，否则负索引越界写显存
+    if(slot < 0 || slot >= cache_total_slots) return;
 
     const int64_t vec_idx = threadIdx.x + blockIdx.y* blockDim.x;
     if(vec_idx < vec_size){
@@ -56,7 +57,9 @@ void reshape_and_cache(
         TORCH_CHECK(slot_mapping.scalar_type() == torch::kInt64, "slot_mapping must be int64");
         
         const int64_t num_tokens = key.size(0);
-        const int64_t vec_size = key.size(1) * key.size(2);
+        //每token元素数：兼容prefill的3D布局[ tokens,heads,dim]和decode的2D布局[tokens,heads*dim]
+        TORCH_CHECK(key.numel() % num_tokens == 0 && key.numel() > 0, "key must be non-empty 2D/3D tensor");
+        const int64_t vec_size = key.numel() / num_tokens;
         const int64_t cache_total_slots = k_cache.numel() / vec_size; //池子总槽数 = 全部元素 / 每槽元素数
 
         const int64_t threads = 128;
