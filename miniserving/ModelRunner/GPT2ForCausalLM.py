@@ -32,6 +32,9 @@ class GPT2ForCausalLM:
         #shape: [num_blocks,block_size,num_head,head_dim]
         self.k_tensor,self.v_tensor = self.init_real_memory()
 
+    @torch.inference_mode()  # 推理引擎禁止构建autograd图：权重默认requires_grad=True，
+    #                          不加此装饰器时每次prefill都会保留12层attention矩阵等全部激活，
+    #                          seq=512时单次forward的图即达GB级，直接OOM（benchmark实测复现）
     def forward(self, inputs, block_table: list[int], slot: list[int], start_pos: int = 0):
         """
         前向传播
