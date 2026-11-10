@@ -1,6 +1,6 @@
 import uuid
 from pydantic import BaseModel, Field
-import time
+
 
 
 class Request(BaseModel):
@@ -10,4 +10,3 @@ class Request(BaseModel):
     sampling_params: dict = Field(default_factory=dict, description="The sampling parameters to use")
 
     #observability
-    arrival_time: float = Field(default_factory=lambda: time.time(), description="The arrival time of the request")
