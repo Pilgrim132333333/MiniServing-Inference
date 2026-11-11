@@ -52,7 +52,10 @@ class Gateway:
         try:
             upstream = await self.proxy_client.forward(instance, path, raw_body, headers)
         except httpx.HTTPStatusError as e:
-            return self._error(503, f"proxy error: {e}")
+            # 后端活着、只是拒绝了这个请求：原样透传它的状态码和响应体
+            return Response(content=e.response.content,
+            status_code=e.response.status_code,
+            media_type="application/json")
         except httpx.HTTPError:
             return self._error(502, f"upstream {instance.id} unreachable")
         

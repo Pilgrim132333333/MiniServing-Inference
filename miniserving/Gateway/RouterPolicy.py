@@ -24,6 +24,7 @@ class RoundRobinRouterPolicy(RouterPolicy):
         if not candidates:
             raise ValueError("No healthy backend available for model")
         
+        instance = candidates[self._cursor]
         self._cursor = (self._cursor + 1) % len(candidates)
-        return candidates[self._cursor]
+        return instance
         
