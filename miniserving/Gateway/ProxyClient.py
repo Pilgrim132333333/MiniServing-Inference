@@ -23,7 +23,7 @@ AsyncClient                          ← 你接触的 API 层
 import httpx
 from miniserving.Gateway.InstanceTable import Instance
 class ProxyClient:
-    def __init__(self, config):
+    def __init__(self, config = None):
         self.config = config
         self._client = httpx.AsyncClient(
             timeout = httpx.Timeout(connect = 2.0, read = 120.0, write=5.0, pool = 5.0),

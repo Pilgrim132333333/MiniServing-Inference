@@ -1,7 +1,7 @@
 """
 一个维护instance的table，没有实际影响instance的业务逻辑
 """
-from dataclass import dataclass
+from dataclasses import dataclass
 
 @dataclass
 class Instance:
