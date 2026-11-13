@@ -23,11 +23,12 @@ class Gateway:
     def __init__(self, 
     router_policy: RouterPolicy,
     instance_table: InstanceTable, 
-    proxy_client: ProxyClient):
+    proxy_client: ProxyClient,
+    rate_limiter: RateLimiter):
         self.router_policy = router_policy
         self.instance_table = instance_table
         self.proxy_client = proxy_client
-        self.rate_limiter = RateLimiter(max_rate=100, burst=100)
+        self.rate_limiter = rate_limiter
         
     async def handle(self, path:str, http_request: HTTPRequest) -> Response:
         raw_body = await http_request.body()
@@ -39,7 +40,8 @@ class Gateway:
         
         wait =  self.rate_limiter.acquire()
         if wait > 0:
-            return Response(status_code=429, content="Rate limit exceeded", media_type = "application/json")
+            return Response(status_code=429, content="Rate limit exceeded", media_type = "application/json",
+                            headers={"Retry-After": str(math.ceil(wait))})
         
         request_id = http_request.headers.get("X-Request-Id", str(uuid.uuid4().hex))
         arrival_time = time.time()
