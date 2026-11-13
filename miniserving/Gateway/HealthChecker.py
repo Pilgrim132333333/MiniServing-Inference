@@ -59,16 +59,22 @@ class HealthChecker:
             if ok:
                 self.failures[instance.id] = 0
                 if not instance.healthy:
-                    instance.set_healthy(instance.id, True)
+                    self.instance_table.set_healthy(instance.id, True)
             else:
                 count = self.failures.get(instance.id, 0) + 1
                 self.failures[instance.id] = count
                 if count >= self.failure_threshold:
-                    instance.set_healthy(instance.id, False)
+                    self.instance_table.set_healthy(instance.id, False)
         
         alive_ids = {inst.id for inst in instances if inst.healthy}
         for gone_id in self.failures.keys() - alive_ids:
             self.failures.pop(gone_id)
+
+    async def _run(self):
+        with suppress(asyncio.CancelledError):
+            while True:
+                await self._check_once()
+                await asyncio.sleep(self.check_interval)
 
     def start(self):
         self._task = asyncio.create_task(self._run())
