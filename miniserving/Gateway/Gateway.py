@@ -6,6 +6,7 @@ Gateway 组装层：
 """
 import time
 import uuid
+import math
 from contextlib import asynccontextmanager
 
 import httpx
@@ -16,6 +17,7 @@ from miniserving.EntryPoints.Request import Request
 from miniserving.Gateway.InstanceTable import Instance, InstanceTable
 from miniserving.Gateway.ProxyClient import ProxyClient
 from miniserving.Gateway.RouterPolicy import RouterPolicy, RoundRobinRouterPolicy
+from miniserving.Gateway.RateLimiter import RateLimiter
 
 class Gateway:
     def __init__(self, 
@@ -25,6 +27,7 @@ class Gateway:
         self.router_policy = router_policy
         self.instance_table = instance_table
         self.proxy_client = proxy_client
+        self.rate_limiter = RateLimiter(max_rate=100, burst=100)
         
     async def handle(self, path:str, http_request: HTTPRequest) -> Response:
         raw_body = await http_request.body()
@@ -33,6 +36,10 @@ class Gateway:
             request = Request.model_validate_json(raw_body)
         except ValidationError:
             return self._error(422,"invalid request body")
+        
+        wait =  self.rate_limiter.acquire()
+        if wait > 0:
+            return Response(status_code=429, content="Rate limit exceeded", media_type = "application/json")
         
         request_id = http_request.headers.get("X-Request-Id", str(uuid.uuid4().hex))
         arrival_time = time.time()
@@ -92,7 +99,8 @@ async def lifespan(app: FastAPI):
     app.state.gateway = Gateway(
         router_policy=RoundRobinRouterPolicy(config = None),
         instance_table=instance_table,
-        proxy_client=proxy_client
+        proxy_client=proxy_client,
+        rate_limiter=RateLimiter(max_rate=100, burst=100),
     )
 
     yield
